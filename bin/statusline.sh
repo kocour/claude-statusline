@@ -177,8 +177,6 @@ fi
 
 line1="${blue}${model_name}${reset}"
 line1+="${sep}"
-line1+="✍️ ${pct_color}${pct_used}%${reset}"
-line1+="${sep}"
 line1+="${cyan}${dirname}${reset}"
 if [ -n "$git_branch" ]; then
     line1+=" ${green}(${git_branch}${red}${git_dirty}${green})${reset}"
@@ -278,11 +276,15 @@ if $needs_refresh; then
     fi
 fi
 
-# ── Rate limit lines ────────────────────────────────────
-rate_lines=""
+# ── Context + Rate limit lines ─────────────────────────
+bar_width=10
+
+context_bar=$(build_bar "$pct_used" "$bar_width")
+context_pct_color=$(color_for_pct "$pct_used")
+context_pct_fmt=$(printf "%3d" "$pct_used")
+rate_lines="${white}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${used_tokens}/${total_tokens}${reset}"
 
 if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
-    bar_width=10
 
     five_hour_pct=$(echo "$usage_data" | jq -r '.five_hour.utilization // 0' | awk '{printf "%.0f", $1}')
     five_hour_reset_iso=$(echo "$usage_data" | jq -r '.five_hour.resets_at // empty')
@@ -291,7 +293,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     five_hour_pct_color=$(color_for_pct "$five_hour_pct")
     five_hour_pct_fmt=$(printf "%3d" "$five_hour_pct")
 
-    rate_lines+="${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}"
+    rate_lines+="\n${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}"
 
     seven_day_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
     seven_day_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
@@ -322,6 +324,6 @@ fi
 
 # ── Output ──────────────────────────────────────────────
 printf "%b" "$line1"
-[ -n "$rate_lines" ] && printf "\n\n%b" "$rate_lines"
+printf "\n\n%b" "$rate_lines"
 
 exit 0
