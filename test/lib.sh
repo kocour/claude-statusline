@@ -41,7 +41,13 @@ run_statusline_raw() {
     return "${PIPESTATUS[0]}"
 }
 
+# An undefined command inside a test must fail it, not pass silently.
+# The handler runs in a forked shell, so it records the failure in a file.
+LIB_FAIL_FILE=$(mktemp)
+trap 'rm -f "$LIB_FAIL_FILE"' EXIT
+command_not_found_handle() { echo "FAIL: undefined command: $1"; echo x >> "$LIB_FAIL_FILE"; return 127; }
+
 report() {
     echo "$PASSES passed, $FAILS failed"
-    [ "$FAILS" -eq 0 ]
+    [ ! -s "$LIB_FAIL_FILE" ] && [ "$FAILS" -eq 0 ] && [ $((PASSES + FAILS)) -gt 0 ]
 }

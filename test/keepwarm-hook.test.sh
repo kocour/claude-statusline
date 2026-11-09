@@ -217,6 +217,8 @@ test_skill_file_contract() {
     assert_contains "$body" "[keepwarm] cache keep-alive ping" "ping prompt"
     assert_contains "$body" "CronDelete" "CronDelete"
     assert_contains "$body" "keepwarm verdict" "verdict"
+    assert_contains "$body" "do not start keep-alive" "do-not-start text"
+    assert_contains "$body" "this session has" "nudge text"
 }
 
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do "$t"; done
