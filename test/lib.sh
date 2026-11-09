@@ -41,13 +41,16 @@ run_statusline_raw() {
     return "${PIPESTATUS[0]}"
 }
 
-# An undefined command inside a test must fail it, not pass silently.
-# The handler runs in a forked shell, so it records the failure in a file.
-LIB_FAIL_FILE=$(mktemp)
-trap 'rm -f "$LIB_FAIL_FILE"' EXIT
-command_not_found_handle() { echo "FAIL: undefined command: $1"; echo x >> "$LIB_FAIL_FILE"; return 127; }
+# An undefined command must fail the run, not pass silently. The handler runs
+# in a forked shell (also inside $(...)), so it signals the main shell.
+if [ "${BASH_VERSINFO[0]}" -ge 4 ]; then
+    trap 'FAILS=$((FAILS + 1))' USR1
+    command_not_found_handle() { echo "FAIL: undefined command: $1" >&2; kill -USR1 $$; return 127; }
+else
+    echo "warning: undefined-command detection requires bash >= 4" >&2
+fi
 
 report() {
     echo "$PASSES passed, $FAILS failed"
-    [ ! -s "$LIB_FAIL_FILE" ] && [ "$FAILS" -eq 0 ] && [ $((PASSES + FAILS)) -gt 0 ]
+    [ "$FAILS" -eq 0 ] && [ $((PASSES + FAILS)) -gt 0 ]
 }

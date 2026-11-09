@@ -18,11 +18,11 @@ If the prompt contains `[keepwarm]`, this is a ping, not the user. Obey the cont
 - `keepwarm verdict: stop (...)` -> CronList, CronDelete every job whose prompt contains `[keepwarm]`, reply `keepwarm stopped`. No other tools.
 - No verdict in context -> reply `ok`. No tools.
 
-## Off (argument is exactly `off`, lowercase)
+## Off (first word of the argument is exactly `off`, lowercase)
 
 CronList, CronDelete every job whose prompt contains `[keepwarm]`, then confirm in one line.
 
-## Start (any other argument, or none)
+## Start (anything else, including no argument)
 
 1. If the hook context says `keepwarm: do not start keep-alive (...)`, explain the reason in one sentence and stop.
 2. CronList. If a job whose prompt contains `[keepwarm]` exists, say keep-alive is already running and stop.
