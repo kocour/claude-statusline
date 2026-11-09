@@ -224,6 +224,7 @@ test_skill_file_contract() {
     local body; body=$(cat "$f")
     assert_contains "$body" "13,43 * * * *" "cron expression"
     assert_contains "$body" "[keepwarm] cache keep-alive ping" "ping prompt"
+    assert_contains "$body" "If the prompt contains \`[keepwarm] cache keep-alive ping\`, this is a ping" "ping definition uses full substring"
     assert_contains "$body" 'prompt: "[keepwarm] cache keep-alive ping. If no \"keepwarm verdict\" context accompanies this message, use CronList and CronDelete every job whose prompt contains [keepwarm], then reply \"keepwarm stopped\"."' "ping prompt literal with fail-closed fallback"
     assert_contains "$body" "No verdict in context (hook missing or failed) -> CronList, CronDelete" "no verdict stops"
     assert_contains "$body" "CronDelete" "CronDelete"
