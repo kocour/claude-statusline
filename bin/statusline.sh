@@ -261,7 +261,7 @@ get_oauth_token() {
 
 # ── Fetch usage data (cached) ──────────────────────────
 cache_file="/tmp/claude/statusline-usage-cache.json"
-cache_max_age=60
+cache_max_age=180
 mkdir -p /tmp/claude
 
 needs_refresh=true
@@ -283,7 +283,7 @@ fi
 if $needs_refresh; then
     token=$(get_oauth_token)
     if [ -n "$token" ] && [ "$token" != "null" ]; then
-        response=$(curl -s --max-time 5 \
+        response=$(curl -s --max-time 3 \
             -H "Accept: application/json" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $token" \

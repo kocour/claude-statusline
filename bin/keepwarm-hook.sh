@@ -18,7 +18,7 @@ parsed=$(printf '%s' "$input" | jq -r '
     (.session_id // "") as $s
     | (.prompt // "" | if type == "string" then . else "" end) as $p
     | [ (if ($s | type) == "string" and ($s | test("\\A[A-Za-z0-9][A-Za-z0-9._-]*\\z")) then $s else "" end),
-        (if ($p | contains("[keepwarm]")) then "ping"
+        (if ($p | contains("[keepwarm] cache keep-alive ping")) then "ping"
          elif ($p | test("^\\s*/keepwarm\\s+off(\\s|$)")) then "off"
          elif ($p | test("^\\s*/keepwarm(\\s|$)")) then "start"
          else "other" end) ] | .[]' 2>/dev/null) || exit 0
@@ -70,7 +70,7 @@ if [ "$kind" = "ping" ]; then
         stop_reason="plan usage above 90%"
     elif is_int "$expires" && [ $((expires - NOW)) -gt 2400 ]; then
         touch "$KEEP"
-        jq -nc '{decision:"block",reason:"keepwarm: cache still warm, ping skipped"}'
+        jq -nc '{decision:"block",reason:"keepwarm: cache still warm, ping skipped",hookSpecificOutput:{hookEventName:"UserPromptSubmit",suppressOriginalPrompt:true}}'
         exit 0
     else
         touch "$KEEP"

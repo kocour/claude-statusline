@@ -90,13 +90,15 @@ test_ping_ok() {
 test_ping_blocked_when_warm() {
     fresh; state_file 1h $((NOW + 3000)) 100000
     printf '%s' $((NOW - 600)) > "$TMP/state/$SID.last-input"
-    local out; out=$(run_hook "[keepwarm] ping")
+    local out; out=$(run_hook "[keepwarm] cache keep-alive ping")
     assert_contains "$out" '"decision":"block"' "blocked"
     assert_contains "$out" "keepwarm: cache still warm, ping skipped" "block reason"
+    assert_eq "true" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.suppressOriginalPrompt')" "suppressOriginalPrompt"
+    assert_eq "UserPromptSubmit" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.hookEventName')" "hookEventName"
     local real; real=$(date +%s)
     printf '%s' $((real - 600)) > "$TMP/state/$SID.last-input"
     state_file 1h $((real + 3000)) 100000
-    run_hook "[keepwarm] ping" "$real" >/dev/null
+    run_hook "[keepwarm] cache keep-alive ping" "$real" >/dev/null
     local m; m=$(mtime "$TMP/state/$SID.keepwarm")
     [ $((m - real)) -le 5 ] && [ $((real - m)) -le 5 ] && _pass || _fail "blocked ping touches keepwarm ($m vs $real)"
 }
@@ -105,7 +107,7 @@ test_ping_stop_after_4h() {
     fresh; state_file 1h $((NOW + 600)) 100000
     printf '%s' $((NOW - 14400)) > "$TMP/state/$SID.last-input"
     touch "$TMP/state/$SID.keepwarm"
-    local out; out=$(run_hook "[keepwarm] ping")
+    local out; out=$(run_hook "[keepwarm] cache keep-alive ping")
     assert_contains "$out" "keepwarm verdict: stop (no user input for 4h)" "stop 4h"
     [ ! -e "$TMP/state/$SID.keepwarm" ] && _pass || _fail ".keepwarm removed"
 }
@@ -113,18 +115,18 @@ test_ping_stop_after_4h() {
 test_ping_stop_ttl() {
     fresh; state_file 5m $((NOW + 100)) 100000
     printf '%s' $((NOW - 600)) > "$TMP/state/$SID.last-input"
-    assert_contains "$(run_hook "[keepwarm] ping")" "stop (cache TTL is not 1h)" "stop ttl"
+    assert_contains "$(run_hook "[keepwarm] cache keep-alive ping")" "stop (cache TTL is not 1h)" "stop ttl"
 }
 
 test_ping_stop_guard() {
     fresh; state_file 1h $((NOW + 100)) 100000 10 90
     printf '%s' $((NOW - 600)) > "$TMP/state/$SID.last-input"
-    assert_contains "$(run_hook "[keepwarm] ping")" "stop (plan usage above 90%)" "stop guard"
+    assert_contains "$(run_hook "[keepwarm] cache keep-alive ping")" "stop (plan usage above 90%)" "stop guard"
 }
 
 test_ping_without_last_input_stops() {
     fresh; state_file 1h $((NOW + 100)) 100000
-    assert_contains "$(run_hook "[keepwarm] ping")" "stop (no record of user input)" "stop no record"
+    assert_contains "$(run_hook "[keepwarm] cache keep-alive ping")" "stop (no record of user input)" "stop no record"
 }
 
 test_ping_marker_inside_wrapped_prompt() {
@@ -133,6 +135,13 @@ test_ping_marker_inside_wrapped_prompt() {
     local out; out=$(run_hook $'<scheduled-task>\n[keepwarm] cache keep-alive ping\n</scheduled-task>')
     assert_contains "$out" "keepwarm verdict: ok" "wrapped ping recognised"
     assert_eq "$((NOW - 3600))" "$(cat "$TMP/state/$SID.last-input")" "last-input unchanged"
+}
+
+test_user_prompt_mentioning_marker_is_user_input() {
+    fresh; state_file 1h $((NOW + 600)) 1000
+    local out; out=$(run_hook "why do I see [keepwarm] in my transcript?")
+    assert_eq "" "$out" "no verdict"
+    assert_eq "$NOW" "$(cat "$TMP/state/$SID.last-input")" "last-input updated"
 }
 
 test_keepwarm_command_start() {
@@ -184,13 +193,13 @@ test_ping_unknown_ttl_ok() {
     fresh
     echo '{"ttl":null,"warm":false,"expires_at":null,"context_tokens":100000}' > "$TMP/state/$SID.json"
     printf '%s' $((NOW - 600)) > "$TMP/state/$SID.last-input"
-    assert_contains "$(run_hook "[keepwarm] ping")" "keepwarm verdict: ok" "null ttl does not stop"
+    assert_contains "$(run_hook "[keepwarm] cache keep-alive ping")" "keepwarm verdict: ok" "null ttl does not stop"
 }
 
 test_ping_missing_state_ok() {
     fresh
     printf '%s' $((NOW - 600)) > "$TMP/state/$SID.last-input"
-    assert_contains "$(run_hook "[keepwarm] ping")" "keepwarm verdict: ok" "missing state does not stop"
+    assert_contains "$(run_hook "[keepwarm] cache keep-alive ping")" "keepwarm verdict: ok" "missing state does not stop"
 }
 
 test_newline_session_id() {
@@ -215,6 +224,8 @@ test_skill_file_contract() {
     local body; body=$(cat "$f")
     assert_contains "$body" "13,43 * * * *" "cron expression"
     assert_contains "$body" "[keepwarm] cache keep-alive ping" "ping prompt"
+    assert_contains "$body" 'prompt: "[keepwarm] cache keep-alive ping. If no \"keepwarm verdict\" context accompanies this message, use CronList and CronDelete every job whose prompt contains [keepwarm], then reply \"keepwarm stopped\"."' "ping prompt literal with fail-closed fallback"
+    assert_contains "$body" "No verdict in context (hook missing or failed) -> CronList, CronDelete" "no verdict stops"
     assert_contains "$body" "CronDelete" "CronDelete"
     assert_contains "$body" "keepwarm verdict" "verdict"
     assert_contains "$body" "do not start keep-alive" "do-not-start text"

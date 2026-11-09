@@ -16,7 +16,7 @@ If the prompt contains `[keepwarm]`, this is a ping, not the user. Obey the cont
 
 - `keepwarm verdict: ok` -> reply `ok`. No tools.
 - `keepwarm verdict: stop (...)` -> CronList, CronDelete every job whose prompt contains `[keepwarm]`, reply `keepwarm stopped`. No other tools.
-- No verdict in context -> reply `ok`. No tools.
+- No verdict in context (hook missing or failed) -> CronList, CronDelete every job whose prompt contains `[keepwarm]`, reply `keepwarm stopped`. No other tools. Permission to keep pinging comes only from the hook.
 
 ## Off (first word of the argument is exactly `off`, lowercase)
 
@@ -26,7 +26,7 @@ CronList, CronDelete every job whose prompt contains `[keepwarm]`, then confirm 
 
 1. If the hook context says `keepwarm: do not start keep-alive (...)`, explain the reason in one sentence and stop.
 2. CronList. If a job whose prompt contains `[keepwarm]` exists, say keep-alive is already running and stop.
-3. CronCreate with `cron: "13,43 * * * *"`, `recurring: true`, `prompt: "[keepwarm] cache keep-alive ping"`.
+3. CronCreate with `cron: "13,43 * * * *"`, `recurring: true`, `prompt: "[keepwarm] cache keep-alive ping. If no \"keepwarm verdict\" context accompanies this message, use CronList and CronDelete every job whose prompt contains [keepwarm], then reply \"keepwarm stopped\"."`.
 4. If CronCreate is refused or fails, say keep-alive did not start and the user can retry with `/keepwarm`; stop.
 5. Confirm in one line: the cache is pinged every 30 minutes and keep-alive stops by itself after 4 h without your input.
 

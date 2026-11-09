@@ -136,7 +136,9 @@ function uninstall() {
   const settings = loadSettings();
   const backup = STATUSLINE_DEST + ".bak";
 
+  let restoredBackup = false;
   if (fs.existsSync(backup)) {
+    restoredBackup = true;
     fs.copyFileSync(backup, STATUSLINE_DEST);
     fs.unlinkSync(backup);
     success(`Restored previous statusline from ${dim}statusline.sh.bak${reset}`);
@@ -163,13 +165,21 @@ function uninstall() {
   if (settings) {
     let changed = false;
     if (isOurStatusLine(settings.statusLine)) {
-      delete settings.statusLine;
-      changed = true;
+      if (restoredBackup) {
+        // The restored script still needs to be wired up; only drop what we added.
+        if ("refreshInterval" in settings.statusLine) {
+          delete settings.statusLine.refreshInterval;
+          changed = true;
+        }
+      } else {
+        delete settings.statusLine;
+        changed = true;
+      }
     }
     if (uninstallKeepwarm(settings)) changed = true;
     if (changed) {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + "\n");
-      success(`Removed statusLine and keep-alive hook from ${dim}settings.json${reset}`);
+      success(`Updated statusLine and removed keep-alive hook in ${dim}settings.json${reset}`);
     } else {
       success("Settings already clean");
     }

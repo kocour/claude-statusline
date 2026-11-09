@@ -136,6 +136,18 @@ test("uninstall restores statusline backup", () => {
   assert.ok(!fs.existsSync(path.join(c, "statusline.sh.bak")));
 });
 
+test("uninstall with backup keeps statusLine command, drops refreshInterval", () => {
+  const home = mkHome();
+  const c = path.join(home, ".claude");
+  fs.mkdirSync(c, { recursive: true });
+  fs.writeFileSync(path.join(c, "statusline.sh"), "ORIGINAL");
+  run(home);
+  run(home, "--uninstall");
+  const s = JSON.parse(fs.readFileSync(path.join(c, "settings.json"), "utf-8"));
+  assert.ok(s.statusLine.command.includes("statusline.sh"));
+  assert.ok(!("refreshInterval" in s.statusLine));
+});
+
 function rawSettings(home, text) {
   fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
   fs.writeFileSync(path.join(home, ".claude", "settings.json"), text);

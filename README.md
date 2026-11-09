@@ -62,7 +62,7 @@ brew install jq
   - expired: dim `cache cold`
   - hidden if Claude Code reports no caching yet
 - **`↑`** after a limit's percentage means usage is at least 10 points ahead of the elapsed time in that window.
-- **`♻`** after the cache countdown means keep-alive is running for this session (its marker was refreshed in the last 50 minutes).
+- **`♻`** after the cache countdown means keep-alive is running for this session (its marker was refreshed in the last 50 minutes). It can show for up to 50 minutes right after keep-alive is requested, before the first ping confirms the cron job.
 
 ## Cache keep-alive
 
@@ -102,7 +102,7 @@ Note: while keep-alive runs, Claude Code's built-in idle compaction (1 hour cach
 npx @kocour/claude-statusline --uninstall
 ```
 
-This restores your previous statusline from the backup if there is one, otherwise removes `statusline.sh` and the `statusLine` setting. It also removes the keep-alive hook entry (only ours; other hooks stay), `keepwarm-hook.sh`, the `keepwarm` skill and the `~/.claude/statusline-state/` directory. Restart Claude Code afterwards.
+This restores your previous statusline from the backup if there is one (the `statusLine` setting stays, only the `refreshInterval` it added is removed), otherwise removes `statusline.sh` and the `statusLine` setting. It also removes the keep-alive hook entry (only ours; other hooks stay), `keepwarm-hook.sh`, the `keepwarm` skill and the `~/.claude/statusline-state/` directory. Restart Claude Code afterwards.
 
 ## License
 
