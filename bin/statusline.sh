@@ -285,6 +285,36 @@ if $needs_refresh; then
     fi
 fi
 
+# ── Cache countdown segment ─────────────────────────────
+keepwarm_active=false
+
+render_cache_segment() {
+    local observed warm expires
+    IFS=$'\t' read -r observed warm expires < <(echo "$input" | jq -r '
+        .prompt_cache // {} |
+        [(.caching_observed // false), (.warm // false), (.expires_at // "")] | @tsv' 2>/dev/null)
+    [ "$observed" = "true" ] || return 0
+
+    local text color remaining
+    if [ "$warm" = "true" ] && [[ "$expires" =~ ^[0-9]+$ ]] && [ $(( expires - NOW )) -gt 0 ]; then
+        remaining=$(( expires - NOW ))
+        local mins=$(( remaining / 60 ))
+        local label="${mins}m"
+        [ "$remaining" -lt 60 ] && label="<1m"
+        if [ "$remaining" -gt 1500 ]; then
+            text="${dim}cache ${label}${reset}"
+        elif [ "$remaining" -gt 300 ]; then
+            text="${yellow}⧗ cache ${label}${reset}"
+        else
+            text="${red}⧗ cache ${label}${reset}"
+        fi
+    else
+        text="${dim}cache cold${reset}"
+    fi
+    [ "$keepwarm_active" = "true" ] && text+=" ♻"
+    printf "%s%s" "$sep" "$text"
+}
+
 # ── Context + Rate limit lines ─────────────────────────
 bar_width=10
 
@@ -292,6 +322,7 @@ context_bar=$(build_bar "$pct_used" "$bar_width")
 context_pct_color=$(color_for_pct "$pct_used")
 context_pct_fmt=$(printf "%3d" "$pct_used")
 rate_lines="${white}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${used_tokens}/${total_tokens}${reset}"
+rate_lines+=$(render_cache_segment)
 
 if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
 

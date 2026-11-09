@@ -35,6 +35,12 @@ run_statusline() {
     return "${PIPESTATUS[0]}"
 }
 
+# run_statusline_raw <stdin-file>: like run_statusline but keeps ANSI escapes.
+run_statusline_raw() {
+    bash "$STATUSLINE" < "$1"
+    return "${PIPESTATUS[0]}"
+}
+
 report() {
     echo "$PASSES passed, $FAILS failed"
     [ "$FAILS" -eq 0 ]
