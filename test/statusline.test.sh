@@ -222,7 +222,27 @@ test_cleanup_throttled() {
     assert_eq "no" "$([ -e "$STATUSLINE_STATE_DIR/old.json" ] && echo yes || echo no)" "cleanup runs when marker is old"
 }
 
+test_cleanup_scoped() {
+    reset_state
+    local real old; real=$(date +%s); old=$((real - 8 * 86400))
+    mkdir -p "$STATUSLINE_STATE_DIR/sub"
+    local f
+    for f in sub/old.json notes.txt a.json b.keepwarm c.last-input d.nudged .tmp.XXXX; do
+        touch "$STATUSLINE_STATE_DIR/$f"; set_mtime "$old" "$STATUSLINE_STATE_DIR/$f"
+    done
+    STATUSLINE_NOW=$real run_statusline "$STDIN" >/dev/null
+    local kept=yes
+    [ -e "$STATUSLINE_STATE_DIR/sub/old.json" ] || kept=no
+    assert_eq yes "$kept" "old file in subdirectory kept"
+    [ -e "$STATUSLINE_STATE_DIR/notes.txt" ] || kept=no
+    assert_eq yes "$kept" "old unrelated file kept"
+    for f in a.json b.keepwarm c.last-input d.nudged .tmp.XXXX; do
+        assert_eq no "$([ -e "$STATUSLINE_STATE_DIR/$f" ] && echo yes || echo no)" "old $f deleted"
+    done
+}
+
 test_cache_fractional_expires
+test_cleanup_scoped
 test_state_file_written
 test_state_file_no_usage
 test_state_no_session_id

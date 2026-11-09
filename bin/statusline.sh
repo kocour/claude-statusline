@@ -445,7 +445,9 @@ cleanup_state() {
     if [[ "$last" =~ ^[0-9]+$ ]] && [ $(( NOW - last )) -lt 86400 ]; then
         return 0
     fi
-    find "$STATE_DIR" -type f -mtime +7 -delete 2>/dev/null
+    find "$STATE_DIR" -maxdepth 1 -type f -mtime +7 \
+        \( -name '*.json' -o -name '*.keepwarm' -o -name '*.last-input' -o -name '*.nudged' \
+           -o \( -name '.*' ! -name '.last-cleanup' \) \) -delete 2>/dev/null
     touch "$marker" 2>/dev/null
 }
 
