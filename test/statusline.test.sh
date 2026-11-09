@@ -174,7 +174,14 @@ test_pace_bad_reset() {
     assert_eq "" "$err" "no stderr output"
 }
 
+test_pace_future_reset_no_arrow() {
+    make_usage 5 "$(iso_at $((STATUSLINE_NOW + 21600)))" 5 "$(iso_at $((STATUSLINE_NOW + 604800 + 86400)))"
+    local out; out=$(TZ=UTC STATUSLINE_USAGE_FILE="$TMP/usage.json" run_statusline "$STDIN")
+    assert_not_contains "$out" "↑" "reset beyond window gives no arrow"
+}
+
 test_pace_arrow_five_hour
+test_pace_future_reset_no_arrow
 test_pace_no_arrow_boundary
 test_pace_arrow_exact_boundary
 test_pace_arrow_weekly

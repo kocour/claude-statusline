@@ -105,6 +105,8 @@ pace_arrow() {
     reset_epoch=$(iso_to_epoch "$iso" 2>/dev/null)
     [[ "$reset_epoch" =~ ^[0-9]+$ ]] || return 0
     local elapsed_pct=$(( (NOW - (reset_epoch - window)) * 100 / window ))
+    [ "$elapsed_pct" -lt 0 ] && elapsed_pct=0
+    [ "$elapsed_pct" -gt 100 ] && elapsed_pct=100
     [ $(( used - elapsed_pct )) -ge 10 ] && printf "↑"
     return 0
 }
