@@ -208,5 +208,16 @@ test_string_pct_no_guard() {
     assert_contains "$(run_hook "hello")" "keepwarm: this session has 100k" "string pct ignored, nudge fires"
 }
 
+test_skill_file_contract() {
+    local f="$ROOT/skills/keepwarm/SKILL.md"
+    [ -f "$f" ] || { _fail "skill file exists"; return; }
+    assert_contains "$(head -5 "$f")" "name: keepwarm" "frontmatter name"
+    local body; body=$(cat "$f")
+    assert_contains "$body" "13,43 * * * *" "cron expression"
+    assert_contains "$body" "[keepwarm] cache keep-alive ping" "ping prompt"
+    assert_contains "$body" "CronDelete" "CronDelete"
+    assert_contains "$body" "keepwarm verdict" "verdict"
+}
+
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do "$t"; done
 report
