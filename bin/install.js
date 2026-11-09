@@ -8,6 +8,14 @@ const CLAUDE_DIR = path.join(os.homedir(), ".claude");
 const SETTINGS_FILE = path.join(CLAUDE_DIR, "settings.json");
 const STATUSLINE_DEST = path.join(CLAUDE_DIR, "statusline.sh");
 const STATUSLINE_SRC = path.resolve(__dirname, "statusline.sh");
+const HOOK_DEST = path.join(CLAUDE_DIR, "keepwarm-hook.sh");
+const HOOK_SRC = path.resolve(__dirname, "keepwarm-hook.sh");
+const SKILL_DEST = path.join(CLAUDE_DIR, "skills", "keepwarm");
+const SKILL_SRC = path.resolve(__dirname, "..", "skills", "keepwarm");
+const STATE_DIR = path.join(CLAUDE_DIR, "statusline-state");
+const HOOK_MARKER = "keepwarm-hook.sh";
+const HOOK_COMMAND = 'bash "$HOME/.claude/keepwarm-hook.sh"';
+const REFRESH_INTERVAL = 30;
 
 const blue = "\x1b[38;2;0;153;255m";
 const green = "\x1b[38;2;0;175;80m";
@@ -57,6 +65,42 @@ function checkDeps() {
   return missing;
 }
 
+function isOurs(h) {
+  return !!h && typeof h.command === "string" && h.command.includes(HOOK_MARKER);
+}
+
+// Adds our UserPromptSubmit hook unless one is already present. Returns true if settings changed.
+function installKeepwarm(settings) {
+  if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
+  if (!Array.isArray(settings.hooks.UserPromptSubmit)) settings.hooks.UserPromptSubmit = [];
+  const groups = settings.hooks.UserPromptSubmit;
+  const present = groups.some((g) => g && Array.isArray(g.hooks) && g.hooks.some(isOurs));
+  if (present) return false;
+  groups.push({ hooks: [{ type: "command", command: HOOK_COMMAND }] });
+  return true;
+}
+
+// Removes only our hook; drops groups/arrays/objects left empty. Returns true if settings changed.
+function uninstallKeepwarm(settings) {
+  const hooks = settings.hooks;
+  if (!hooks || !Array.isArray(hooks.UserPromptSubmit)) return false;
+  let changed = false;
+  const kept = [];
+  for (const g of hooks.UserPromptSubmit) {
+    if (g && Array.isArray(g.hooks) && g.hooks.some(isOurs)) {
+      changed = true;
+      g.hooks = g.hooks.filter((h) => !isOurs(h));
+      if (g.hooks.length === 0) continue;
+    }
+    kept.push(g);
+  }
+  if (!changed) return false;
+  if (kept.length > 0) hooks.UserPromptSubmit = kept;
+  else delete hooks.UserPromptSubmit;
+  if (Object.keys(hooks).length === 0) delete settings.hooks;
+  return true;
+}
+
 function uninstall() {
   console.log();
   console.log(`  ${blue}Claude Line Uninstaller${reset}`);
@@ -76,13 +120,31 @@ function uninstall() {
     warn("No statusline found — nothing to remove");
   }
 
+  if (fs.existsSync(HOOK_DEST)) {
+    fs.unlinkSync(HOOK_DEST);
+    success(`Removed ${dim}keepwarm-hook.sh${reset}`);
+  }
+  if (fs.existsSync(SKILL_DEST)) {
+    fs.rmSync(SKILL_DEST, { recursive: true, force: true });
+    success(`Removed ${dim}skills/keepwarm${reset}`);
+  }
+  if (fs.existsSync(STATE_DIR)) {
+    fs.rmSync(STATE_DIR, { recursive: true, force: true });
+    success(`Removed ${dim}statusline-state${reset}`);
+  }
+
   if (fs.existsSync(SETTINGS_FILE)) {
     try {
       const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
+      let changed = false;
       if (settings.statusLine) {
         delete settings.statusLine;
+        changed = true;
+      }
+      if (uninstallKeepwarm(settings)) changed = true;
+      if (changed) {
         fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + "\n");
-        success(`Removed statusLine from ${dim}settings.json${reset}`);
+        success(`Removed statusLine and keep-alive hook from ${dim}settings.json${reset}`);
       } else {
         success("Settings already clean");
       }
@@ -134,6 +196,14 @@ function run() {
   fs.chmodSync(STATUSLINE_DEST, 0o755);
   success(`Installed statusline to ${dim}${STATUSLINE_DEST}${reset}`);
 
+  fs.copyFileSync(HOOK_SRC, HOOK_DEST);
+  fs.chmodSync(HOOK_DEST, 0o755);
+  success(`Installed keep-alive hook to ${dim}${HOOK_DEST}${reset}`);
+
+  fs.mkdirSync(path.dirname(SKILL_DEST), { recursive: true });
+  fs.cpSync(SKILL_SRC, SKILL_DEST, { recursive: true });
+  success(`Installed keepwarm skill to ${dim}${SKILL_DEST}${reset}`);
+
   let settings = {};
   if (fs.existsSync(SETTINGS_FILE)) {
     try {
@@ -144,21 +214,35 @@ function run() {
     }
   }
 
+  let changed = false;
   const statusLineConfig = {
     type: "command",
     command: 'bash "$HOME/.claude/statusline.sh"',
+    refreshInterval: REFRESH_INTERVAL,
   };
 
   if (
     settings.statusLine &&
     settings.statusLine.type === "command" &&
-    settings.statusLine.command === statusLineConfig.command
+    settings.statusLine.command === statusLineConfig.command &&
+    settings.statusLine.refreshInterval === statusLineConfig.refreshInterval
   ) {
-    success("Settings already configured");
+    success("Statusline settings already configured");
   } else {
     settings.statusLine = statusLineConfig;
+    changed = true;
+    success(`Configured statusLine in ${dim}settings.json${reset}`);
+  }
+
+  if (installKeepwarm(settings)) {
+    changed = true;
+    success(`Registered keep-alive hook in ${dim}settings.json${reset}`);
+  } else {
+    success("Keep-alive hook already registered");
+  }
+
+  if (changed || !fs.existsSync(SETTINGS_FILE)) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + "\n");
-    success(`Updated ${dim}settings.json${reset} with statusLine config`);
   }
 
   console.log();

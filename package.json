@@ -1,10 +1,14 @@
 {
-  "name": "@kamranahmedse/claude-statusline",
+  "name": "@kocour/claude-statusline",
   "version": "1.0.4",
   "description": "A status line for Claude Code CLI showing model, context usage, rate limits, and more",
   "scripts": {
     "test": "bash test/run.sh"
   },
+  "files": [
+    "bin",
+    "skills"
+  ],
   "bin": {
     "claude-statusline": "./bin/install.js"
   },
@@ -15,5 +19,5 @@
     "cli"
   ],
   "license": "MIT",
-  "author": "Kamran Ahmed"
+  "author": "Lukas Kocourek"
 }
