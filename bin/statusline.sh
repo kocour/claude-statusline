@@ -96,6 +96,19 @@ iso_to_epoch() {
     return 1
 }
 
+# pace_arrow <used_pct> <resets_at_iso> <window_seconds>
+# Prints "↑" when usage is at least 10 points ahead of elapsed window time.
+pace_arrow() {
+    local used="$1" iso="$2" window="$3"
+    [ -z "$iso" ] || [ "$iso" = "null" ] && return 0
+    local reset_epoch
+    reset_epoch=$(iso_to_epoch "$iso" 2>/dev/null)
+    [[ "$reset_epoch" =~ ^[0-9]+$ ]] || return 0
+    local elapsed_pct=$(( (NOW - (reset_epoch - window)) * 100 / window ))
+    [ $(( used - elapsed_pct )) -ge 10 ] && printf "↑"
+    return 0
+}
+
 format_reset_time() {
     local iso_str="$1"
     local style="$2"
@@ -332,8 +345,9 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     five_hour_bar=$(build_bar "$five_hour_pct" "$bar_width")
     five_hour_pct_color=$(color_for_pct "$five_hour_pct")
     five_hour_pct_fmt=$(printf "%3d" "$five_hour_pct")
+    five_hour_pace=$(pace_arrow "$five_hour_pct" "$five_hour_reset_iso" 18000)
 
-    limits_line="${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}"
+    limits_line="${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${five_hour_pace}${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}"
 
     seven_day_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
     seven_day_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
@@ -341,8 +355,9 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     seven_day_bar=$(build_bar "$seven_day_pct" "$bar_width")
     seven_day_pct_color=$(color_for_pct "$seven_day_pct")
     seven_day_pct_fmt=$(printf "%3d" "$seven_day_pct")
+    seven_day_pace=$(pace_arrow "$seven_day_pct" "$seven_day_reset_iso" 604800)
 
-    limits_line+="${sep}${white}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${seven_day_reset}${reset}"
+    limits_line+="${sep}${white}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${seven_day_pace}${reset} ${dim}⟳${reset} ${white}${seven_day_reset}${reset}"
     rate_lines+="\n${limits_line}"
 
     extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')

@@ -128,6 +128,58 @@ test_cache_hidden_not_observed
 test_cache_hidden_absent
 test_cache_null_expires
 
+# ── pace arrow ──────────────────────────────────────────
+iso_at() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
+# make_usage <5h_util> <5h_reset_iso|""> <7d_util> <7d_reset_iso|""> : writes $TMP/usage.json
+make_usage() {
+    jq -n --argjson f "$1" --arg fr "$2" --argjson s "$3" --arg sr "$4" '
+        {five_hour: ({utilization: $f} + (if $fr == "" then {} else {resets_at: $fr} end)),
+         seven_day: ({utilization: $s} + (if $sr == "" then {} else {resets_at: $sr} end)),
+         extra_usage: {is_enabled: false}}' > "$TMP/usage.json"
+}
+limits_line() { printf '%s\n' "$1" | grep '^current'; }
+
+test_pace_arrow_five_hour() {
+    make_usage 73 "$(iso_at $((STATUSLINE_NOW + 10800)))" 10 "$(iso_at $((STATUSLINE_NOW + 302400)))"
+    local out; out=$(TZ=UTC STATUSLINE_USAGE_FILE="$TMP/usage.json" run_statusline "$STDIN")
+    assert_contains "$(limits_line "$out")" " 73%↑ ⟳" "arrow after 5h percentage"
+}
+
+test_pace_no_arrow_boundary() {
+    make_usage 49 "$(iso_at $((STATUSLINE_NOW + 10800)))" 10 "$(iso_at $((STATUSLINE_NOW + 302400)))"
+    local out; out=$(TZ=UTC STATUSLINE_USAGE_FILE="$TMP/usage.json" run_statusline "$STDIN")
+    assert_not_contains "$out" "↑" "diff 9 has no arrow"
+}
+
+test_pace_arrow_exact_boundary() {
+    make_usage 50 "$(iso_at $((STATUSLINE_NOW + 10800)))" 10 "$(iso_at $((STATUSLINE_NOW + 302400)))"
+    local out; out=$(TZ=UTC STATUSLINE_USAGE_FILE="$TMP/usage.json" run_statusline "$STDIN")
+    assert_contains "$out" "50%↑" "diff 10 has arrow"
+}
+
+test_pace_arrow_weekly() {
+    make_usage 10 "$(iso_at $((STATUSLINE_NOW + 10800)))" 41 "$(iso_at $((STATUSLINE_NOW + 483840)))"
+    local out; out=$(TZ=UTC STATUSLINE_USAGE_FILE="$TMP/usage.json" run_statusline "$STDIN")
+    local line; line=$(limits_line "$out")
+    assert_contains "${line#*weekly}" "41%↑" "weekly arrow"
+    assert_not_contains "${line%%weekly*}" "↑" "no 5h arrow"
+}
+
+test_pace_bad_reset() {
+    make_usage 90 "" 90 ""
+    local out err
+    out=$(TZ=UTC STATUSLINE_USAGE_FILE="$TMP/usage.json" run_statusline "$STDIN" 2>"$TMP/err")
+    err=$(cat "$TMP/err")
+    assert_not_contains "$out" "↑" "missing reset has no arrow"
+    assert_eq "" "$err" "no stderr output"
+}
+
+test_pace_arrow_five_hour
+test_pace_no_arrow_boundary
+test_pace_arrow_exact_boundary
+test_pace_arrow_weekly
+test_pace_bad_reset
+
 test_context_bar_blocks
 test_limits_on_one_line
 test_no_dots
