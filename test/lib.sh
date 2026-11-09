@@ -32,6 +32,7 @@ $1" ;; *) _pass ;; esac
 # prints ANSI-stripped output.
 run_statusline() {
     bash "$STATUSLINE" < "$1" | strip_ansi
+    return "${PIPESTATUS[0]}"
 }
 
 report() {
