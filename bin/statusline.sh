@@ -1,5 +1,11 @@
 #!/bin/bash
+# Test seams (tests only):
+#   STATUSLINE_NOW         epoch used as "now"
+#   STATUSLINE_USAGE_FILE  read usage JSON from this file, never call curl
+#   STATUSLINE_STATE_DIR   state directory
 set -f
+
+NOW="${STATUSLINE_NOW:-$(date +%s)}"
 
 input=$(cat)
 
@@ -55,8 +61,8 @@ build_bar() {
     bar_color=$(color_for_pct "$pct")
 
     local filled_str="" empty_str=""
-    for ((i=0; i<filled; i++)); do filled_str+="●"; done
-    for ((i=0; i<empty; i++)); do empty_str+="○"; done
+    for ((i=0; i<filled; i++)); do filled_str+="█"; done
+    for ((i=0; i<empty; i++)); do empty_str+="▒"; done
 
     printf "${bar_color}${filled_str}${dim}${empty_str}${reset}"
 }
@@ -163,7 +169,7 @@ session_start=$(echo "$input" | jq -r '.session.start_time // empty')
 if [ -n "$session_start" ] && [ "$session_start" != "null" ]; then
     start_epoch=$(iso_to_epoch "$session_start")
     if [ -n "$start_epoch" ]; then
-        now_epoch=$(date +%s)
+        now_epoch=$NOW
         elapsed=$(( now_epoch - start_epoch ))
         if [ "$elapsed" -ge 3600 ]; then
             session_duration="$(( elapsed / 3600 ))h$(( (elapsed % 3600) / 60 ))m"
@@ -246,9 +252,12 @@ mkdir -p /tmp/claude
 needs_refresh=true
 usage_data=""
 
-if [ -f "$cache_file" ]; then
+if [ -n "$STATUSLINE_USAGE_FILE" ]; then
+    needs_refresh=false
+    [ -f "$STATUSLINE_USAGE_FILE" ] && usage_data=$(cat "$STATUSLINE_USAGE_FILE" 2>/dev/null)
+elif [ -f "$cache_file" ]; then
     cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
-    now=$(date +%s)
+    now=$NOW
     cache_age=$(( now - cache_mtime ))
     if [ "$cache_age" -lt "$cache_max_age" ]; then
         needs_refresh=false
@@ -293,7 +302,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     five_hour_pct_color=$(color_for_pct "$five_hour_pct")
     five_hour_pct_fmt=$(printf "%3d" "$five_hour_pct")
 
-    rate_lines+="\n${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}"
+    limits_line="${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}"
 
     seven_day_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
     seven_day_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
@@ -302,7 +311,8 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     seven_day_pct_color=$(color_for_pct "$seven_day_pct")
     seven_day_pct_fmt=$(printf "%3d" "$seven_day_pct")
 
-    rate_lines+="\n${white}weekly${reset}  ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${seven_day_reset}${reset}"
+    limits_line+="${sep}${white}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${seven_day_reset}${reset}"
+    rate_lines+="\n${limits_line}"
 
     extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')
     if [ "$extra_enabled" = "true" ]; then
