@@ -300,8 +300,23 @@ if $needs_refresh; then
     fi
 fi
 
-# ── Cache countdown segment ─────────────────────────────
+# ── Session state + keep-alive marker ───────────────────
+STATE_DIR="${STATUSLINE_STATE_DIR:-$HOME/.claude/statusline-state}"
+session_id=$(echo "$input" | jq -r '.session_id // empty' 2>/dev/null)
+[[ "$session_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || session_id=""
+
+file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+
+# keepwarm_active=true iff <session>.keepwarm exists and is at most 50 min old
 keepwarm_active=false
+if [ -n "$session_id" ] && [ -f "$STATE_DIR/$session_id.keepwarm" ]; then
+    kw_mtime=$(file_mtime "$STATE_DIR/$session_id.keepwarm")
+    if [[ "$kw_mtime" =~ ^[0-9]+$ ]] && [ "$kw_mtime" -ge $(( NOW - 3000 )) ]; then
+        keepwarm_active=true
+    fi
+fi
+
+# ── Cache countdown segment ─────────────────────────────
 
 render_cache_segment() {
     local observed warm expires
@@ -309,6 +324,7 @@ render_cache_segment() {
         .prompt_cache // {} |
         [(.caching_observed // false), (.warm // false), (.expires_at // "")] | @tsv' 2>/dev/null)
     [ "$observed" = "true" ] || return 0
+    [[ "$expires" =~ ^[0-9]+(\.[0-9]+)?$ ]] && expires="${expires%%.*}"
 
     local text color remaining
     if [ "$warm" = "true" ] && [[ "$expires" =~ ^[0-9]+$ ]] && [ $(( expires - NOW )) -gt 0 ]; then
@@ -381,6 +397,60 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
         rate_lines+="\n${extra_reset_line}"
     fi
 fi
+
+# ── Write state file (interface for the keep-alive hook) ─
+write_state() {
+    [ -n "$session_id" ] || return 0
+    mkdir -p "$STATE_DIR" 2>/dev/null || return 0
+
+    local ttl warm expires
+    IFS=$'\t' read -r ttl warm expires < <(echo "$input" | jq -r '
+        .prompt_cache // {} |
+        [(.ttl // "-"), (.warm // false), (.expires_at // "-")] | @tsv' 2>/dev/null)
+    [ "$ttl" = "-" ] && ttl=""
+    [[ "$expires" =~ ^[0-9]+(\.[0-9]+)?$ ]] && expires="${expires%%.*}" || expires=""
+    [ "$warm" = "true" ] || warm=false
+
+    local fh="" sd=""
+    if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
+        fh="$five_hour_pct"; sd="$seven_day_pct"
+    fi
+    [[ "$fh" =~ ^[0-9]+$ ]] || fh=""
+    [[ "$sd" =~ ^[0-9]+$ ]] || sd=""
+
+    local tmp
+    tmp=$(mktemp "$STATE_DIR/.${session_id}.XXXXXX" 2>/dev/null) || return 0
+    if jq -n --argjson now "$NOW" --arg ttl "$ttl" --argjson warm "$warm" \
+        --arg expires "$expires" --argjson ctx "$current" --argjson size "$size" \
+        --arg fh "$fh" --arg sd "$sd" '
+        {updated_at: $now,
+         ttl: (if $ttl == "" then null else $ttl end),
+         warm: $warm,
+         expires_at: (if $expires == "" then null else ($expires | tonumber) end),
+         context_tokens: $ctx,
+         context_size: $size}
+        + (if $fh == "" then {} else {five_hour_pct: ($fh | tonumber)} end)
+        + (if $sd == "" then {} else {seven_day_pct: ($sd | tonumber)} end)' > "$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$STATE_DIR/$session_id.json"
+    else
+        rm -f "$tmp"
+    fi
+}
+
+# Delete state files older than 7 days, at most once per day
+cleanup_state() {
+    [ -n "$session_id" ] && [ -d "$STATE_DIR" ] || return 0
+    local marker="$STATE_DIR/.last-cleanup" last
+    last=$(file_mtime "$marker")
+    if [[ "$last" =~ ^[0-9]+$ ]] && [ $(( NOW - last )) -lt 86400 ]; then
+        return 0
+    fi
+    find "$STATE_DIR" -type f -mtime +7 -delete 2>/dev/null
+    touch "$marker" 2>/dev/null
+}
+
+write_state
+cleanup_state
 
 # ── Output ──────────────────────────────────────────────
 printf "%b" "$line1"

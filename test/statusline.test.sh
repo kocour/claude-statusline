@@ -128,6 +128,110 @@ test_cache_hidden_not_observed
 test_cache_hidden_absent
 test_cache_null_expires
 
+test_cache_fractional_expires() {
+    make_cache_stdin true true $((CNOW + 3120)).5
+    local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
+    assert_eq "1" "$(context_line "$out" | grep -c '│ cache 52m$')" "fractional expires_at is truncated"
+}
+
+# ── state file, keep-alive marker, cleanup ──────────────
+# set_mtime <epoch> <file>: GNU touch -d @epoch, BSD touch -t fallback
+set_mtime() {
+    touch -d "@$1" "$2" 2>/dev/null || touch -t "$(date -r "$1" +%Y%m%d%H%M.%S)" "$2"
+}
+reset_state() { rm -rf "$STATUSLINE_STATE_DIR"; mkdir -p "$STATUSLINE_STATE_DIR"; }
+
+test_state_file_written() {
+    reset_state; make_cache_stdin true true $((CNOW + 3120))
+    STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json" >/dev/null
+    local f="$STATUSLINE_STATE_DIR/test-session.json"
+    assert_eq '"1h"' "$(jq -c .ttl "$f")" "state ttl"
+    assert_eq "84000" "$(jq .context_tokens "$f")" "state context_tokens"
+    assert_eq "200000" "$(jq .context_size "$f")" "state context_size"
+    assert_eq "31" "$(jq .five_hour_pct "$f")" "state five_hour_pct"
+    assert_eq "22" "$(jq .seven_day_pct "$f")" "state seven_day_pct"
+    assert_eq "$CNOW" "$(jq .updated_at "$f")" "state updated_at"
+    assert_eq "true" "$(jq .warm "$f")" "state warm"
+    assert_eq "$((CNOW + 3120))" "$(jq .expires_at "$f")" "state expires_at"
+}
+
+test_state_file_no_usage() {
+    reset_state
+    STATUSLINE_NOW=$CNOW STATUSLINE_USAGE_FILE="$TMP/missing.json" run_statusline "$STDIN" >/dev/null
+    local f="$STATUSLINE_STATE_DIR/test-session.json"
+    assert_eq "false" "$(jq 'has("five_hour_pct")' "$f")" "five_hour_pct absent"
+    assert_eq "false" "$(jq 'has("seven_day_pct")' "$f")" "seven_day_pct absent"
+    assert_eq "null" "$(jq -c .ttl "$f")" "ttl null without prompt_cache"
+    assert_eq "null" "$(jq -c .expires_at "$f")" "expires_at null without prompt_cache"
+    assert_eq "false" "$(jq .warm "$f")" "warm false without prompt_cache"
+}
+
+test_state_no_session_id() {
+    reset_state
+    jq 'del(.session_id)' "$STDIN" > "$TMP/nosid.json"
+    local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/nosid.json")
+    assert_contains "$out" "context" "still rendered without session_id"
+    assert_eq "0" "$(find "$STATUSLINE_STATE_DIR" -type f -name '*.json' | wc -l | tr -d ' ')" "no state file written"
+}
+
+test_keepwarm_indicator() {
+    reset_state; make_cache_stdin true true $((CNOW + 3120))
+    touch "$STATUSLINE_STATE_DIR/test-session.keepwarm"
+    set_mtime $((CNOW - 10)) "$STATUSLINE_STATE_DIR/test-session.keepwarm"
+    local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
+    assert_eq "1" "$(context_line "$out" | grep -c '│ cache 52m ♻$')" "fresh marker shows ♻"
+}
+
+test_keepwarm_indicator_stale() {
+    reset_state; make_cache_stdin true true $((CNOW + 3120))
+    touch "$STATUSLINE_STATE_DIR/test-session.keepwarm"
+    set_mtime $((CNOW - 7200)) "$STATUSLINE_STATE_DIR/test-session.keepwarm"
+    local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
+    assert_not_contains "$(context_line "$out")" "♻" "stale marker hides ♻"
+}
+
+test_keepwarm_indicator_absent() {
+    reset_state; make_cache_stdin true true $((CNOW + 3120))
+    local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
+    assert_not_contains "$(context_line "$out")" "♻" "no marker no ♻"
+}
+
+# find -mtime uses the real clock, so these mtimes are relative to `date +%s`
+test_cleanup_old_files() {
+    reset_state
+    local real; real=$(date +%s)
+    touch "$STATUSLINE_STATE_DIR/old.json" "$STATUSLINE_STATE_DIR/recent.json"
+    set_mtime $((real - 8 * 86400)) "$STATUSLINE_STATE_DIR/old.json"
+    set_mtime $((real - 86400)) "$STATUSLINE_STATE_DIR/recent.json"
+    STATUSLINE_NOW=$real run_statusline "$STDIN" >/dev/null
+    assert_eq "no" "$([ -e "$STATUSLINE_STATE_DIR/old.json" ] && echo yes || echo no)" "8-day-old file deleted"
+    assert_eq "yes" "$([ -e "$STATUSLINE_STATE_DIR/recent.json" ] && echo yes || echo no)" "1-day-old file kept"
+    assert_eq "yes" "$([ -e "$STATUSLINE_STATE_DIR/.last-cleanup" ] && echo yes || echo no)" ".last-cleanup created"
+}
+
+test_cleanup_throttled() {
+    reset_state
+    local real; real=$(date +%s)
+    touch "$STATUSLINE_STATE_DIR/old.json" "$STATUSLINE_STATE_DIR/.last-cleanup"
+    set_mtime $((real - 8 * 86400)) "$STATUSLINE_STATE_DIR/old.json"
+    set_mtime $((real - 3600)) "$STATUSLINE_STATE_DIR/.last-cleanup"
+    STATUSLINE_NOW=$real run_statusline "$STDIN" >/dev/null
+    assert_eq "yes" "$([ -e "$STATUSLINE_STATE_DIR/old.json" ] && echo yes || echo no)" "cleanup skipped within a day"
+    set_mtime $((real - 2 * 86400)) "$STATUSLINE_STATE_DIR/.last-cleanup"
+    STATUSLINE_NOW=$real run_statusline "$STDIN" >/dev/null
+    assert_eq "no" "$([ -e "$STATUSLINE_STATE_DIR/old.json" ] && echo yes || echo no)" "cleanup runs when marker is old"
+}
+
+test_cache_fractional_expires
+test_state_file_written
+test_state_file_no_usage
+test_state_no_session_id
+test_keepwarm_indicator
+test_keepwarm_indicator_stale
+test_keepwarm_indicator_absent
+test_cleanup_old_files
+test_cleanup_throttled
+
 # ── pace arrow ──────────────────────────────────────────
 iso_at() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 # make_usage <5h_util> <5h_reset_iso|""> <7d_util> <7d_reset_iso|""> : writes $TMP/usage.json
