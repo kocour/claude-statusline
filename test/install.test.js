@@ -135,3 +135,59 @@ test("uninstall restores statusline backup", () => {
   assert.strictEqual(fs.readFileSync(path.join(c, "statusline.sh"), "utf-8"), "ORIGINAL");
   assert.ok(!fs.existsSync(path.join(c, "statusline.sh.bak")));
 });
+
+function rawSettings(home, text) {
+  fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".claude", "settings.json"), text);
+}
+
+for (const [name, text] of [
+  ["object UserPromptSubmit", '{"hooks":{"UserPromptSubmit":{"a":1}}}'],
+  ["array hooks", '{"hooks":[]}'],
+  ["array root", "[]"],
+  ["null root", "null"],
+]) {
+  for (const args of [[], ["--uninstall"]]) {
+    test(`malformed settings (${name}) aborts untouched ${args.join("")}`, () => {
+      const home = mkHome();
+      rawSettings(home, text);
+      const r = spawnSync("node", [INSTALLER, ...args], {
+        env: { ...process.env, HOME: home },
+        encoding: "utf-8",
+      });
+      assert.notStrictEqual(r.status, 0);
+      const c = path.join(home, ".claude");
+      assert.strictEqual(fs.readFileSync(path.join(c, "settings.json"), "utf-8"), text);
+      assert.deepStrictEqual(fs.readdirSync(c), ["settings.json"]);
+    });
+  }
+}
+
+test("install keeps extra statusLine keys of our own config", () => {
+  const home = mkHome();
+  writeSettings(home, {
+    statusLine: { type: "command", command: 'bash "$HOME/.claude/statusline.sh"', padding: 2 },
+  });
+  run(home);
+  const sl = readSettings(home).statusLine;
+  assert.strictEqual(sl.padding, 2);
+  assert.strictEqual(sl.refreshInterval, 30);
+});
+
+test("reinstall does not overwrite backup with our own script", () => {
+  const home = mkHome();
+  const c = path.join(home, ".claude");
+  fs.mkdirSync(c, { recursive: true });
+  fs.writeFileSync(path.join(c, "statusline.sh"), "USER");
+  run(home);
+  run(home);
+  run(home, "--uninstall");
+  assert.strictEqual(fs.readFileSync(path.join(c, "statusline.sh"), "utf-8"), "USER");
+});
+
+test("uninstall keeps a foreign statusLine", () => {
+  const home = mkHome();
+  writeSettings(home, { statusLine: { type: "command", command: "my-own-line" } });
+  run(home, "--uninstall");
+  assert.strictEqual(readSettings(home).statusLine.command, "my-own-line");
+});
