@@ -17,7 +17,7 @@ input=$(cat) || exit 0
 parsed=$(printf '%s' "$input" | jq -r '
     (.session_id // "") as $s
     | (.prompt // "" | if type == "string" then . else "" end) as $p
-    | [ ($s | if type == "string" then . else "" end),
+    | [ (if ($s | type) == "string" and ($s | test("\\A[A-Za-z0-9][A-Za-z0-9._-]*\\z")) then $s else "" end),
         (if ($p | contains("[keepwarm]")) then "ping"
          elif ($p | test("^\\s*/keepwarm\\s+off(\\s|$)")) then "off"
          elif ($p | test("^\\s*/keepwarm(\\s|$)")) then "start"
@@ -38,7 +38,7 @@ have_state=0 ttl="-" expires="-" ctx="-" guard=0
 if [ -f "$STATE" ]; then
     st=$(jq -r '
         [ (.ttl // "-"), (.expires_at // "-"), (.context_tokens // "-"),
-          (if ((.five_hour_pct // 0) >= 90 or (.seven_day_pct // 0) >= 90) then 1 else 0 end) ]
+          (if (((.five_hour_pct | numbers) // 0) >= 90 or ((.seven_day_pct | numbers) // 0) >= 90) then 1 else 0 end) ]
         | map(tostring) | .[]' "$STATE" 2>/dev/null) || st=""
     if [ -n "$st" ]; then
         have_state=1
@@ -64,11 +64,12 @@ if [ "$kind" = "ping" ]; then
         stop_reason="no record of user input"
     elif [ $((NOW - last)) -ge 14400 ]; then
         stop_reason="no user input for 4h"
-    elif [ "$have_state" = 1 ] && [ "$ttl" != "1h" ]; then
+    elif [ "$have_state" = 1 ] && [ "$ttl" != "-" ] && [ "$ttl" != "1h" ]; then
         stop_reason="cache TTL is not 1h"
     elif [ "$guard" = 1 ]; then
         stop_reason="plan usage above 90%"
     elif is_int "$expires" && [ $((expires - NOW)) -gt 2400 ]; then
+        touch "$KEEP"
         jq -nc '{decision:"block",reason:"keepwarm: cache still warm, ping skipped"}'
         exit 0
     else
@@ -87,6 +88,7 @@ printf '%s' "$NOW" > "$LAST"
 case "$kind" in
 off)
     rm -f "$KEEP"
+    touch "$NUDGED"
     ;;
 start)
     if [ "$have_state" = 1 ] && [ "$ttl" != "-" ] && [ "$ttl" != "1h" ]; then

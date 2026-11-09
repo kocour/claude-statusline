@@ -93,6 +93,12 @@ test_ping_blocked_when_warm() {
     local out; out=$(run_hook "[keepwarm] ping")
     assert_contains "$out" '"decision":"block"' "blocked"
     assert_contains "$out" "keepwarm: cache still warm, ping skipped" "block reason"
+    local real; real=$(date +%s)
+    printf '%s' $((real - 600)) > "$TMP/state/$SID.last-input"
+    state_file 1h $((real + 3000)) 100000
+    run_hook "[keepwarm] ping" "$real" >/dev/null
+    local m; m=$(mtime "$TMP/state/$SID.keepwarm")
+    [ $((m - real)) -le 5 ] && [ $((real - m)) -le 5 ] && _pass || _fail "blocked ping touches keepwarm ($m vs $real)"
 }
 
 test_ping_stop_after_4h() {
@@ -154,6 +160,7 @@ test_keepwarm_off() {
     local out; out=$(run_hook "/keepwarm off")
     assert_eq "" "$out" "no stdout"
     [ ! -e "$TMP/state/$SID.keepwarm" ] && _pass || _fail ".keepwarm removed"
+    [ -f "$TMP/state/$SID.nudged" ] && _pass || _fail ".nudged created"
 }
 
 test_garbage_stdin() {
@@ -171,6 +178,34 @@ test_invalid_session_id() {
     assert_eq 0 "$rc" "exit 0"
     assert_eq "" "$out" "no stdout"
     assert_eq 0 "$(find "$TMP/state" -type f | wc -l | tr -d ' ')" "no files written"
+}
+
+test_ping_unknown_ttl_ok() {
+    fresh
+    echo '{"ttl":null,"warm":false,"expires_at":null,"context_tokens":100000}' > "$TMP/state/$SID.json"
+    printf '%s' $((NOW - 600)) > "$TMP/state/$SID.last-input"
+    assert_contains "$(run_hook "[keepwarm] ping")" "keepwarm verdict: ok" "null ttl does not stop"
+}
+
+test_ping_missing_state_ok() {
+    fresh
+    printf '%s' $((NOW - 600)) > "$TMP/state/$SID.last-input"
+    assert_contains "$(run_hook "[keepwarm] ping")" "keepwarm verdict: ok" "missing state does not stop"
+}
+
+test_newline_session_id() {
+    fresh
+    local out rc
+    out=$(jq -n '{session_id:"ok\nping", prompt:"hello"}' | KEEPWARM_NOW=$NOW bash "$HOOK"); rc=$?
+    assert_eq 0 "$rc" "exit 0"
+    assert_eq "" "$out" "no stdout"
+    assert_eq 0 "$(find "$TMP/state" -type f | wc -l | tr -d ' ')" "no files written"
+}
+
+test_string_pct_no_guard() {
+    fresh
+    echo '{"ttl":"1h","warm":true,"expires_at":null,"context_tokens":100000,"five_hour_pct":"92"}' > "$TMP/state/$SID.json"
+    assert_contains "$(run_hook "hello")" "keepwarm: this session has 100k" "string pct ignored, nudge fires"
 }
 
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do "$t"; done
