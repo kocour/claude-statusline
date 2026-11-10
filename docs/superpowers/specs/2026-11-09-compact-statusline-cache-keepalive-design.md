@@ -86,7 +86,7 @@ Source: the statusline stdin JSON field `prompt_cache` (Claude Code ≥ 2.1.251)
 - `prompt_cache` absent or `caching_observed == false` → no cache segment.
 - `warm == false` or `expires_at` in the past → `cache cold`, dim.
 - Otherwise remaining = `expires_at − now`, rendered in minutes (`52m`; `<1m` under a minute).
-  - remaining > 25 min → dim `cache 52m`
+  - remaining > 25 min → white `cache 52m`
   - 5 min < remaining ≤ 25 min → yellow `⧗ cache 12m`
   - remaining ≤ 5 min → red `⧗ cache 3m`
 - With a 5 m TTL the same rules apply (it will just always be ≤ 5 min → red while warm).

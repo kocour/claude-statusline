@@ -333,7 +333,7 @@ render_cache_segment() {
         local label="${mins}m"
         [ "$remaining" -lt 60 ] && label="<1m"
         if [ "$remaining" -gt 1500 ]; then
-            text="${dim}cache ${label}${reset}"
+            text="${white}cache ${label}${reset}"
         elif [ "$remaining" -gt 300 ]; then
             text="${yellow}⧗ cache ${label}${reset}"
         else

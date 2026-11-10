@@ -56,7 +56,7 @@ brew install jq
 - **`context`** shows context window usage and token counts.
 - **`current` / `weekly`** show the 5 hour and 7 day plan limits and their reset times. An `extra` usage line appears when extra usage is enabled.
 - **`cache`** is the time left on the prompt cache:
-  - more than 25 min: dim `cache 52m`
+  - more than 25 min: white `cache 52m`
   - 25 min or less: yellow `⧗ cache 12m`
   - 5 min or less: red `⧗ cache 3m`
   - expired: dim `cache cold`
