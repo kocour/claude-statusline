@@ -1,0 +1,13 @@
+{
+  "model": {"display_name": "Opus 5.5"},
+  "cwd": "__CWD__",
+  "session_id": "test-session",
+  "context_window": {
+    "context_window_size": 200000,
+    "current_usage": {
+      "input_tokens": 4000,
+      "cache_creation_input_tokens": 10000,
+      "cache_read_input_tokens": 70000
+    }
+  }
+}

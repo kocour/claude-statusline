@@ -8,6 +8,14 @@ const CLAUDE_DIR = path.join(os.homedir(), ".claude");
 const SETTINGS_FILE = path.join(CLAUDE_DIR, "settings.json");
 const STATUSLINE_DEST = path.join(CLAUDE_DIR, "statusline.sh");
 const STATUSLINE_SRC = path.resolve(__dirname, "statusline.sh");
+const HOOK_DEST = path.join(CLAUDE_DIR, "keepwarm-hook.sh");
+const HOOK_SRC = path.resolve(__dirname, "keepwarm-hook.sh");
+const SKILL_DEST = path.join(CLAUDE_DIR, "skills", "keepwarm");
+const SKILL_SRC = path.resolve(__dirname, "..", "skills", "keepwarm");
+const STATE_DIR = path.join(CLAUDE_DIR, "statusline-state");
+const HOOK_MARKER = "keepwarm-hook.sh";
+const HOOK_COMMAND = 'bash "$HOME/.claude/keepwarm-hook.sh"';
+const REFRESH_INTERVAL = 30;
 
 const blue = "\x1b[38;2;0;153;255m";
 const green = "\x1b[38;2;0;175;80m";
@@ -57,15 +65,80 @@ function checkDeps() {
   return missing;
 }
 
+const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const isOurStatusLine = (sl) =>
+  isPlainObject(sl) && typeof sl.command === "string" && sl.command.includes("statusline.sh");
+
+// Reads and validates settings.json before anything is modified. Returns null if the file is absent.
+function loadSettings() {
+  if (!fs.existsSync(SETTINGS_FILE)) return null;
+  let settings;
+  try {
+    settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
+  } catch {
+    fail(`Could not parse ${SETTINGS_FILE} — fix it manually`);
+    process.exit(1);
+  }
+  const hooks = isPlainObject(settings) ? settings.hooks : undefined;
+  const ok =
+    isPlainObject(settings) &&
+    (hooks === undefined || isPlainObject(hooks)) &&
+    (hooks === undefined || hooks.UserPromptSubmit === undefined || Array.isArray(hooks.UserPromptSubmit));
+  if (!ok) {
+    fail(`Unexpected shape in ${SETTINGS_FILE} — fix it manually`);
+    process.exit(1);
+  }
+  return settings;
+}
+
+function isOurs(h) {
+  return !!h && typeof h.command === "string" && h.command.includes(HOOK_MARKER);
+}
+
+// Adds our UserPromptSubmit hook unless one is already present. Returns true if settings changed.
+function installKeepwarm(settings) {
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.UserPromptSubmit) settings.hooks.UserPromptSubmit = [];
+  const groups = settings.hooks.UserPromptSubmit;
+  const present = groups.some((g) => g && Array.isArray(g.hooks) && g.hooks.some(isOurs));
+  if (present) return false;
+  groups.push({ hooks: [{ type: "command", command: HOOK_COMMAND }] });
+  return true;
+}
+
+// Removes only our hook; drops groups/arrays/objects left empty. Returns true if settings changed.
+function uninstallKeepwarm(settings) {
+  const hooks = settings.hooks;
+  if (!hooks || !Array.isArray(hooks.UserPromptSubmit)) return false;
+  let changed = false;
+  const kept = [];
+  for (const g of hooks.UserPromptSubmit) {
+    if (g && Array.isArray(g.hooks) && g.hooks.some(isOurs)) {
+      changed = true;
+      g.hooks = g.hooks.filter((h) => !isOurs(h));
+      if (g.hooks.length === 0) continue;
+    }
+    kept.push(g);
+  }
+  if (!changed) return false;
+  if (kept.length > 0) hooks.UserPromptSubmit = kept;
+  else delete hooks.UserPromptSubmit;
+  if (Object.keys(hooks).length === 0) delete settings.hooks;
+  return true;
+}
+
 function uninstall() {
   console.log();
   console.log(`  ${blue}Claude Line Uninstaller${reset}`);
   console.log(`  ${dim}───────────────────────${reset}`);
   console.log();
 
+  const settings = loadSettings();
   const backup = STATUSLINE_DEST + ".bak";
 
+  let restoredBackup = false;
   if (fs.existsSync(backup)) {
+    restoredBackup = true;
     fs.copyFileSync(backup, STATUSLINE_DEST);
     fs.unlinkSync(backup);
     success(`Restored previous statusline from ${dim}statusline.sh.bak${reset}`);
@@ -76,19 +149,39 @@ function uninstall() {
     warn("No statusline found — nothing to remove");
   }
 
-  if (fs.existsSync(SETTINGS_FILE)) {
-    try {
-      const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
-      if (settings.statusLine) {
-        delete settings.statusLine;
-        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + "\n");
-        success(`Removed statusLine from ${dim}settings.json${reset}`);
+  if (fs.existsSync(HOOK_DEST)) {
+    fs.unlinkSync(HOOK_DEST);
+    success(`Removed ${dim}keepwarm-hook.sh${reset}`);
+  }
+  if (fs.existsSync(SKILL_DEST)) {
+    fs.rmSync(SKILL_DEST, { recursive: true, force: true });
+    success(`Removed ${dim}skills/keepwarm${reset}`);
+  }
+  if (fs.existsSync(STATE_DIR)) {
+    fs.rmSync(STATE_DIR, { recursive: true, force: true });
+    success(`Removed ${dim}statusline-state${reset}`);
+  }
+
+  if (settings) {
+    let changed = false;
+    if (isOurStatusLine(settings.statusLine)) {
+      if (restoredBackup) {
+        // The restored script still needs to be wired up; only drop what we added.
+        if ("refreshInterval" in settings.statusLine) {
+          delete settings.statusLine.refreshInterval;
+          changed = true;
+        }
       } else {
-        success("Settings already clean");
+        delete settings.statusLine;
+        changed = true;
       }
-    } catch {
-      fail(`Could not parse ${SETTINGS_FILE} — fix it manually`);
-      process.exit(1);
+    }
+    if (uninstallKeepwarm(settings)) changed = true;
+    if (changed) {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + "\n");
+      success(`Updated statusLine and removed keep-alive hook in ${dim}settings.json${reset}`);
+    } else {
+      success("Settings already clean");
     }
   }
 
@@ -119,13 +212,19 @@ function run() {
   }
   success("Dependencies found (jq, curl, git)");
 
+  const settings = loadSettings() || {};
+
   if (!fs.existsSync(CLAUDE_DIR)) {
     fs.mkdirSync(CLAUDE_DIR, { recursive: true });
     success(`Created ${CLAUDE_DIR}`);
   }
 
   const backup = STATUSLINE_DEST + ".bak";
-  if (fs.existsSync(STATUSLINE_DEST)) {
+  if (
+    fs.existsSync(STATUSLINE_DEST) &&
+    !fs.existsSync(backup) &&
+    !fs.readFileSync(STATUSLINE_DEST).equals(fs.readFileSync(STATUSLINE_SRC))
+  ) {
     fs.copyFileSync(STATUSLINE_DEST, backup);
     warn(`Backed up existing statusline to ${dim}statusline.sh.bak${reset}`);
   }
@@ -134,31 +233,45 @@ function run() {
   fs.chmodSync(STATUSLINE_DEST, 0o755);
   success(`Installed statusline to ${dim}${STATUSLINE_DEST}${reset}`);
 
-  let settings = {};
-  if (fs.existsSync(SETTINGS_FILE)) {
-    try {
-      settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
-    } catch {
-      fail(`Could not parse ${SETTINGS_FILE} — fix it manually`);
-      process.exit(1);
-    }
-  }
+  fs.copyFileSync(HOOK_SRC, HOOK_DEST);
+  fs.chmodSync(HOOK_DEST, 0o755);
+  success(`Installed keep-alive hook to ${dim}${HOOK_DEST}${reset}`);
 
+  fs.mkdirSync(path.dirname(SKILL_DEST), { recursive: true });
+  fs.cpSync(SKILL_SRC, SKILL_DEST, { recursive: true });
+  success(`Installed keepwarm skill to ${dim}${SKILL_DEST}${reset}`);
+
+  let changed = false;
   const statusLineConfig = {
     type: "command",
     command: 'bash "$HOME/.claude/statusline.sh"',
+    refreshInterval: REFRESH_INTERVAL,
   };
 
   if (
     settings.statusLine &&
     settings.statusLine.type === "command" &&
-    settings.statusLine.command === statusLineConfig.command
+    settings.statusLine.command === statusLineConfig.command &&
+    settings.statusLine.refreshInterval === statusLineConfig.refreshInterval
   ) {
-    success("Settings already configured");
+    success("Statusline settings already configured");
   } else {
-    settings.statusLine = statusLineConfig;
+    settings.statusLine = isOurStatusLine(settings.statusLine)
+      ? { ...settings.statusLine, ...statusLineConfig }
+      : statusLineConfig;
+    changed = true;
+    success(`Configured statusLine in ${dim}settings.json${reset}`);
+  }
+
+  if (installKeepwarm(settings)) {
+    changed = true;
+    success(`Registered keep-alive hook in ${dim}settings.json${reset}`);
+  } else {
+    success("Keep-alive hook already registered");
+  }
+
+  if (changed || !fs.existsSync(SETTINGS_FILE)) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + "\n");
-    success(`Updated ${dim}settings.json${reset} with statusLine config`);
   }
 
   console.log();

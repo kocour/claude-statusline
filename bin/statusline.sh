@@ -1,5 +1,11 @@
 #!/bin/bash
+# Test seams (tests only):
+#   STATUSLINE_NOW         epoch used as "now"
+#   STATUSLINE_USAGE_FILE  read usage JSON from this file, never call curl
+#   STATUSLINE_STATE_DIR   state directory
 set -f
+
+NOW="${STATUSLINE_NOW:-$(date +%s)}"
 
 input=$(cat)
 
@@ -12,10 +18,12 @@ fi
 blue='\033[38;2;0;153;255m'
 orange='\033[38;2;255;176;85m'
 green='\033[38;2;0;175;80m'
+mint='\033[38;2;150;210;160m'
 cyan='\033[38;2;86;182;194m'
 red='\033[38;2;255;85;85m'
 yellow='\033[38;2;230;200;0m'
 white='\033[38;2;220;220;220m'
+silver='\033[38;2;160;180;200m'
 magenta='\033[38;2;180;140;255m'
 dim='\033[2m'
 reset='\033[0m'
@@ -39,7 +47,7 @@ color_for_pct() {
     if [ "$pct" -ge 90 ]; then printf "$red"
     elif [ "$pct" -ge 70 ]; then printf "$yellow"
     elif [ "$pct" -ge 50 ]; then printf "$orange"
-    else printf "$green"
+    else printf "$mint"
     fi
 }
 
@@ -55,8 +63,8 @@ build_bar() {
     bar_color=$(color_for_pct "$pct")
 
     local filled_str="" empty_str=""
-    for ((i=0; i<filled; i++)); do filled_str+="●"; done
-    for ((i=0; i<empty; i++)); do empty_str+="○"; done
+    for ((i=0; i<filled; i++)); do filled_str+="█"; done
+    for ((i=0; i<empty; i++)); do empty_str+="▒"; done
 
     printf "${bar_color}${filled_str}${dim}${empty_str}${reset}"
 }
@@ -88,6 +96,21 @@ iso_to_epoch() {
     fi
 
     return 1
+}
+
+# pace_arrow <used_pct> <resets_at_iso> <window_seconds>
+# Prints "↑" when usage is at least 10 points ahead of elapsed window time.
+pace_arrow() {
+    local used="$1" iso="$2" window="$3"
+    [ -z "$iso" ] || [ "$iso" = "null" ] && return 0
+    local reset_epoch
+    reset_epoch=$(iso_to_epoch "$iso" 2>/dev/null)
+    [[ "$reset_epoch" =~ ^[0-9]+$ ]] || return 0
+    local elapsed_pct=$(( (NOW - (reset_epoch - window)) * 100 / window ))
+    [ "$elapsed_pct" -lt 0 ] && elapsed_pct=0
+    [ "$elapsed_pct" -gt 100 ] && elapsed_pct=100
+    [ $(( used - elapsed_pct )) -ge 10 ] && printf "↑"
+    return 0
 }
 
 format_reset_time() {
@@ -163,7 +186,7 @@ session_start=$(echo "$input" | jq -r '.session.start_time // empty')
 if [ -n "$session_start" ] && [ "$session_start" != "null" ]; then
     start_epoch=$(iso_to_epoch "$session_start")
     if [ -n "$start_epoch" ]; then
-        now_epoch=$(date +%s)
+        now_epoch=$NOW
         elapsed=$(( now_epoch - start_epoch ))
         if [ "$elapsed" -ge 3600 ]; then
             session_duration="$(( elapsed / 3600 ))h$(( (elapsed % 3600) / 60 ))m"
@@ -240,15 +263,18 @@ get_oauth_token() {
 
 # ── Fetch usage data (cached) ──────────────────────────
 cache_file="/tmp/claude/statusline-usage-cache.json"
-cache_max_age=60
+cache_max_age=180
 mkdir -p /tmp/claude
 
 needs_refresh=true
 usage_data=""
 
-if [ -f "$cache_file" ]; then
+if [ -n "$STATUSLINE_USAGE_FILE" ]; then
+    needs_refresh=false
+    [ -f "$STATUSLINE_USAGE_FILE" ] && usage_data=$(cat "$STATUSLINE_USAGE_FILE" 2>/dev/null)
+elif [ -f "$cache_file" ]; then
     cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
-    now=$(date +%s)
+    now=$NOW
     cache_age=$(( now - cache_mtime ))
     if [ "$cache_age" -lt "$cache_max_age" ]; then
         needs_refresh=false
@@ -259,7 +285,7 @@ fi
 if $needs_refresh; then
     token=$(get_oauth_token)
     if [ -n "$token" ] && [ "$token" != "null" ]; then
-        response=$(curl -s --max-time 5 \
+        response=$(curl -s --max-time 3 \
             -H "Accept: application/json" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $token" \
@@ -276,13 +302,67 @@ if $needs_refresh; then
     fi
 fi
 
+# ── Session state + keep-alive marker ───────────────────
+STATE_DIR="${STATUSLINE_STATE_DIR:-$HOME/.claude/statusline-state}"
+session_id=$(echo "$input" | jq -r '.session_id // empty' 2>/dev/null)
+[[ "$session_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || session_id=""
+
+file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+
+# keepwarm_active=true iff <session>.keepwarm exists and is at most 50 min old
+keepwarm_active=false
+if [ -n "$session_id" ] && [ -f "$STATE_DIR/$session_id.keepwarm" ]; then
+    kw_mtime=$(file_mtime "$STATE_DIR/$session_id.keepwarm")
+    if [[ "$kw_mtime" =~ ^[0-9]+$ ]] && [ "$kw_mtime" -ge $(( NOW - 3000 )) ]; then
+        keepwarm_active=true
+    fi
+fi
+
+# ── Cache countdown segment ─────────────────────────────
+
+render_cache_segment() {
+    local observed warm expires
+    IFS=$'\t' read -r observed warm expires < <(echo "$input" | jq -r '
+        .prompt_cache // {} |
+        [(.caching_observed // false), (.warm // false), (.expires_at // "")] | @tsv' 2>/dev/null)
+    [ "$observed" = "true" ] || return 0
+    [[ "$expires" =~ ^[0-9]+(\.[0-9]+)?$ ]] && expires="${expires%%.*}"
+
+    local text color remaining
+    if [ "$warm" = "true" ] && [[ "$expires" =~ ^[0-9]+$ ]] && [ $(( expires - NOW )) -gt 0 ]; then
+        remaining=$(( expires - NOW ))
+        local mins=$(( remaining / 60 ))
+        local label="${mins}m"
+        [ "$remaining" -lt 60 ] && label="<1m"
+        if [ "$remaining" -gt 1500 ]; then
+            text="${white}cache ${label}${reset}"
+        elif [ "$remaining" -gt 300 ]; then
+            text="${yellow}⧗ cache ${label}${reset}"
+        else
+            text="${red}⧗ cache ${label}${reset}"
+        fi
+    else
+        text="${dim}cache cold${reset}"
+    fi
+    [ "$keepwarm_active" = "true" ] && text+=" ♻"
+    printf "%s" "$text"
+}
+
 # ── Context + Rate limit lines ─────────────────────────
 bar_width=10
 
 context_bar=$(build_bar "$pct_used" "$bar_width")
 context_pct_color=$(color_for_pct "$pct_used")
 context_pct_fmt=$(printf "%3d" "$pct_used")
-rate_lines="${white}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${used_tokens}/${total_tokens}${reset}"
+context_left="${white}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${used_tokens}/${total_tokens}${reset}"
+cache_text=$(render_cache_segment)
+# Visible width of the left parts, locale-independent: ASCII pieces counted
+# with ${#}, fixed-width non-ASCII glyphs (10-glyph bar, ⟳, ↑) added by hand.
+# "label " (7+1) + bar (10) + " " + "NNN%" (4) + " ⟳ " (3) = 26
+ctx_w=$(( 26 + ${#used_tokens} + 1 + ${#total_tokens} ))
+cur_w=0
+sep2="   ${dim}│${reset}   "
+pad_to() { local n=$(( $1 - $2 )); [ "$n" -gt 0 ] && printf "%${n}s" ""; return 0; }
 
 if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
 
@@ -292,8 +372,11 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     five_hour_bar=$(build_bar "$five_hour_pct" "$bar_width")
     five_hour_pct_color=$(color_for_pct "$five_hour_pct")
     five_hour_pct_fmt=$(printf "%3d" "$five_hour_pct")
+    five_hour_pace=$(pace_arrow "$five_hour_pct" "$five_hour_reset_iso" 18000)
 
-    rate_lines+="\n${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}"
+    cur_w=$(( 26 + ${#five_hour_reset} ))
+    [ -n "$five_hour_pace" ] && cur_w=$(( cur_w + 1 ))
+    limits_line="${silver}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${five_hour_pace}${reset} ${dim}⟳${reset} ${silver}${five_hour_reset}${reset}@@PAD@@"
 
     seven_day_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
     seven_day_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
@@ -301,8 +384,10 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     seven_day_bar=$(build_bar "$seven_day_pct" "$bar_width")
     seven_day_pct_color=$(color_for_pct "$seven_day_pct")
     seven_day_pct_fmt=$(printf "%3d" "$seven_day_pct")
+    seven_day_pace=$(pace_arrow "$seven_day_pct" "$seven_day_reset_iso" 604800)
 
-    rate_lines+="\n${white}weekly${reset}  ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${seven_day_reset}${reset}"
+    limits_line+="${sep2}${silver}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${seven_day_pace}${reset} ${dim}⟳${reset} ${silver}${seven_day_reset}${reset}"
+    rate_lines+="\n${limits_line}"
 
     extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')
     if [ "$extra_enabled" = "true" ]; then
@@ -312,17 +397,78 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
         extra_bar=$(build_bar "$extra_pct" "$bar_width")
         extra_pct_color=$(color_for_pct "$extra_pct")
 
-        extra_reset=$(date -v+1m -v1d +"%b %-d" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        extra_reset=$(date -j -r "$NOW" -v+1m -v1d +"%b %-d" 2>/dev/null | tr '[:upper:]' '[:lower:]')
         if [ -z "$extra_reset" ]; then
-            extra_reset=$(date -d "$(date +%Y-%m-01) +1 month" +"%b %-d" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+            extra_reset=$(date -d "$(date -d "@$NOW" +%Y-%m-01) +1 month" +"%b %-d" 2>/dev/null | tr '[:upper:]' '[:lower:]')
         fi
 
-        extra_col="${white}extra${reset}   ${extra_bar} ${extra_pct_color}\$${extra_used}${dim}/${reset}${white}\$${extra_limit}${reset}"
-        extra_reset_line="${dim}resets ${reset}${white}${extra_reset}${reset}"
+        extra_col="${silver}extra${reset}   ${extra_bar} ${extra_pct_color}\$${extra_used}${dim}/${reset}${silver}\$${extra_limit}${reset}"
+        extra_reset_line="${dim}resets ${reset}${silver}${extra_reset}${reset}"
         rate_lines+="\n${extra_col}"
         rate_lines+="\n${extra_reset_line}"
     fi
 fi
+
+# ── Assemble context line, aligned with the limits line ─
+target_w=$(( ctx_w > cur_w ? ctx_w : cur_w ))
+rate_lines="${context_left}$(pad_to "$target_w" "$ctx_w")${cache_text:+${sep2}${cache_text}}${rate_lines}"
+rate_lines="${rate_lines/@@PAD@@/$(pad_to "$target_w" "$cur_w")}"
+
+# ── Write state file (interface for the keep-alive hook) ─
+write_state() {
+    [ -n "$session_id" ] || return 0
+    mkdir -p "$STATE_DIR" 2>/dev/null || return 0
+
+    local ttl warm expires
+    IFS=$'\t' read -r ttl warm expires < <(echo "$input" | jq -r '
+        .prompt_cache // {} |
+        [(.ttl // "-"), (.warm // false), (.expires_at // "-")] | @tsv' 2>/dev/null)
+    [ "$ttl" = "-" ] && ttl=""
+    [[ "$expires" =~ ^[0-9]+(\.[0-9]+)?$ ]] && expires="${expires%%.*}" || expires=""
+    [ "$warm" = "true" ] || warm=false
+
+    local fh="" sd=""
+    if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
+        fh="$five_hour_pct"; sd="$seven_day_pct"
+    fi
+    [[ "$fh" =~ ^[0-9]+$ ]] || fh=""
+    [[ "$sd" =~ ^[0-9]+$ ]] || sd=""
+
+    local tmp
+    tmp=$(mktemp "$STATE_DIR/.${session_id}.XXXXXX" 2>/dev/null) || return 0
+    if jq -n --argjson now "$NOW" --arg ttl "$ttl" --argjson warm "$warm" \
+        --arg expires "$expires" --argjson ctx "$current" --argjson size "$size" \
+        --arg fh "$fh" --arg sd "$sd" '
+        {updated_at: $now,
+         ttl: (if $ttl == "" then null else $ttl end),
+         warm: $warm,
+         expires_at: (if $expires == "" then null else ($expires | tonumber) end),
+         context_tokens: $ctx,
+         context_size: $size}
+        + (if $fh == "" then {} else {five_hour_pct: ($fh | tonumber)} end)
+        + (if $sd == "" then {} else {seven_day_pct: ($sd | tonumber)} end)' > "$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$STATE_DIR/$session_id.json"
+    else
+        rm -f "$tmp"
+    fi
+}
+
+# Delete state files older than 7 days, at most once per day
+cleanup_state() {
+    [ -n "$session_id" ] && [ -d "$STATE_DIR" ] || return 0
+    local marker="$STATE_DIR/.last-cleanup" last
+    last=$(file_mtime "$marker")
+    if [[ "$last" =~ ^[0-9]+$ ]] && [ $(( NOW - last )) -lt 86400 ]; then
+        return 0
+    fi
+    find "$STATE_DIR" -maxdepth 1 -type f -mtime +7 \
+        \( -name '*.json' -o -name '*.keepwarm' -o -name '*.last-input' -o -name '*.nudged' \
+           -o \( -name '.*' ! -name '.last-cleanup' \) \) -delete 2>/dev/null
+    touch "$marker" 2>/dev/null
+}
+
+write_state
+cleanup_state
 
 # ── Output ──────────────────────────────────────────────
 printf "%b" "$line1"
