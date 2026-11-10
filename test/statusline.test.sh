@@ -22,7 +22,7 @@ test_context_bar_blocks() {
 test_limits_on_one_line() {
     local out; out=$(run_statusline "$STDIN")
     local n
-    n=$(printf '%s\n' "$out" | grep -cE '^current ███▒▒▒▒▒▒▒  31% ⟳ [0-9]{2}:[0-9]{2} │ weekly ██▒▒▒▒▒▒▒▒  22% ⟳ ')
+    n=$(printf '%s\n' "$out" | grep -cE '^current ███▒▒▒▒▒▒▒  31% ⟳ [0-9]{2}:[0-9]{2} +  │ weekly ██▒▒▒▒▒▒▒▒  22% ⟳ ')
     assert_eq 1 "$n" "current and weekly share one line"
     n=$(printf '%s\n' "$out" | grep -c '^weekly')
     assert_eq 0 "$n" "no separate weekly line"
@@ -57,7 +57,7 @@ test_cache_dim_when_far() {
     local out raw
     out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
     raw=$(STATUSLINE_NOW=$CNOW run_statusline_raw "$TMP/cache.json" | grep 'context')
-    assert_eq "1" "$(context_line "$out" | grep -c '│ cache 52m$')" "far cache is plain dim countdown"
+    assert_eq "1" "$(context_line "$out" | grep -c '  │ cache 52m$')" "far cache is plain dim countdown"
     local before="${raw%%cache*}"
     assert_not_contains "$before" $'\033[38;2;230;200;0m' "no yellow before cache"
     assert_not_contains "$before" $'\033[38;2;255;85;85m' "no red before cache"
@@ -68,7 +68,7 @@ test_cache_yellow() {
     local out raw
     out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
     raw=$(STATUSLINE_NOW=$CNOW run_statusline_raw "$TMP/cache.json" | grep 'context')
-    assert_eq "1" "$(context_line "$out" | grep -c '│ ⧗ cache 12m$')" "yellow cache text"
+    assert_eq "1" "$(context_line "$out" | grep -c '  │ ⧗ cache 12m$')" "yellow cache text"
     assert_contains "${raw%%⧗*}" $'\033[38;2;230;200;0m' "yellow before hourglass"
 }
 
@@ -77,7 +77,7 @@ test_cache_red() {
     local out raw
     out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
     raw=$(STATUSLINE_NOW=$CNOW run_statusline_raw "$TMP/cache.json" | grep 'context')
-    assert_eq "1" "$(context_line "$out" | grep -c '│ ⧗ cache 3m$')" "red cache text"
+    assert_eq "1" "$(context_line "$out" | grep -c '  │ ⧗ cache 3m$')" "red cache text"
     assert_contains "${raw%%⧗*}" $'\033[38;2;255;85;85m' "red before hourglass"
 }
 
@@ -90,13 +90,13 @@ test_cache_under_minute() {
 test_cache_cold_warm_false() {
     make_cache_stdin true false $((CNOW + 3000))
     local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
-    assert_eq "1" "$(context_line "$out" | grep -c '│ cache cold$')" "warm false is cold"
+    assert_eq "1" "$(context_line "$out" | grep -c '  │ cache cold$')" "warm false is cold"
 }
 
 test_cache_cold_expired() {
     make_cache_stdin true true $((CNOW - 10))
     local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
-    assert_eq "1" "$(context_line "$out" | grep -c '│ cache cold$')" "expired is cold"
+    assert_eq "1" "$(context_line "$out" | grep -c '  │ cache cold$')" "expired is cold"
 }
 
 test_cache_hidden_not_observed() {
@@ -131,7 +131,7 @@ test_cache_null_expires
 test_cache_fractional_expires() {
     make_cache_stdin true true $((CNOW + 3120)).5
     local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
-    assert_eq "1" "$(context_line "$out" | grep -c '│ cache 52m$')" "fractional expires_at is truncated"
+    assert_eq "1" "$(context_line "$out" | grep -c '  │ cache 52m$')" "fractional expires_at is truncated"
 }
 
 # ── state file, keep-alive marker, cleanup ──────────────
@@ -179,7 +179,7 @@ test_keepwarm_indicator() {
     touch "$STATUSLINE_STATE_DIR/test-session.keepwarm"
     set_mtime $((CNOW - 10)) "$STATUSLINE_STATE_DIR/test-session.keepwarm"
     local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
-    assert_eq "1" "$(context_line "$out" | grep -c '│ cache 52m ♻$')" "fresh marker shows ♻"
+    assert_eq "1" "$(context_line "$out" | grep -c '  │ cache 52m ♻$')" "fresh marker shows ♻"
 }
 
 test_keepwarm_indicator_stale() {
@@ -304,12 +304,37 @@ test_pace_future_reset_no_arrow() {
     assert_not_contains "$out" "↑" "reset beyond window gives no arrow"
 }
 
+# column (in characters) of the first │ on the line starting with $2
+sep_col() { printf '%s\n' "$1" | grep "^$2" | LC_ALL=en_US.UTF-8 python3 -c 'import sys; print(sys.stdin.read().index("│"))'; }
+
+test_second_segments_aligned() {
+    make_cache_stdin true true $((CNOW + 3120))
+    local out; out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
+    assert_eq "$(sep_col "$out" context)" "$(sep_col "$out" current)" "separators aligned without pace arrow"
+    # pace arrow on the five-hour window widens the left part of that line
+    jq '.five_hour.utilization = 90 | .five_hour.resets_at = "2026-11-09T17:40:00Z"' "$ROOT/test/fixtures/usage-basic.json" > "$TMP/usage-pace.json"
+    out=$(STATUSLINE_USAGE_FILE="$TMP/usage-pace.json" STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
+    assert_contains "$out" "↑" "pace arrow present"
+    assert_eq "$(sep_col "$out" context)" "$(sep_col "$out" current)" "separators aligned with pace arrow"
+}
+
+test_second_segments_aligned_c_locale() {
+    make_cache_stdin true true $((CNOW + 3120))
+    jq '.five_hour.utilization = 90 | .five_hour.resets_at = "2026-11-09T17:40:00Z"' "$ROOT/test/fixtures/usage-basic.json" > "$TMP/usage-pace.json"
+    local out
+    out=$(LANG=C LC_ALL=C STATUSLINE_USAGE_FILE="$TMP/usage-pace.json" STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
+    assert_eq "$(sep_col "$out" context)" "$(sep_col "$out" current)" "separators aligned under LANG=C"
+}
+
 test_pace_arrow_five_hour
 test_pace_future_reset_no_arrow
 test_pace_no_arrow_boundary
 test_pace_arrow_exact_boundary
 test_pace_arrow_weekly
 test_pace_bad_reset
+
+test_second_segments_aligned
+test_second_segments_aligned_c_locale
 
 test_context_bar_blocks
 test_limits_on_one_line

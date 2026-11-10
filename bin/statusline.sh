@@ -343,7 +343,7 @@ render_cache_segment() {
         text="${dim}cache cold${reset}"
     fi
     [ "$keepwarm_active" = "true" ] && text+=" ♻"
-    printf "%s%s" "$sep" "$text"
+    printf "%s" "$text"
 }
 
 # ── Context + Rate limit lines ─────────────────────────
@@ -352,8 +352,15 @@ bar_width=10
 context_bar=$(build_bar "$pct_used" "$bar_width")
 context_pct_color=$(color_for_pct "$pct_used")
 context_pct_fmt=$(printf "%3d" "$pct_used")
-rate_lines="${white}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${used_tokens}/${total_tokens}${reset}"
-rate_lines+=$(render_cache_segment)
+context_left="${white}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${used_tokens}/${total_tokens}${reset}"
+cache_text=$(render_cache_segment)
+# Visible width of the left parts, locale-independent: ASCII pieces counted
+# with ${#}, fixed-width non-ASCII glyphs (10-glyph bar, ⟳, ↑) added by hand.
+# "label " (7+1) + bar (10) + " " + "NNN%" (4) + " ⟳ " (3) = 25
+ctx_w=$(( 25 + ${#used_tokens} + 1 + ${#total_tokens} ))
+cur_w=0
+sep2="  ${dim}│${reset} "
+pad_to() { local n=$(( $1 - $2 )); [ "$n" -gt 0 ] && printf "%${n}s" ""; return 0; }
 
 if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
 
@@ -365,7 +372,9 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     five_hour_pct_fmt=$(printf "%3d" "$five_hour_pct")
     five_hour_pace=$(pace_arrow "$five_hour_pct" "$five_hour_reset_iso" 18000)
 
-    limits_line="${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${five_hour_pace}${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}"
+    cur_w=$(( 25 + ${#five_hour_reset} ))
+    [ -n "$five_hour_pace" ] && cur_w=$(( cur_w + 1 ))
+    limits_line="${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${five_hour_pace}${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}@@PAD@@"
 
     seven_day_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
     seven_day_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
@@ -375,7 +384,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     seven_day_pct_fmt=$(printf "%3d" "$seven_day_pct")
     seven_day_pace=$(pace_arrow "$seven_day_pct" "$seven_day_reset_iso" 604800)
 
-    limits_line+="${sep}${white}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${seven_day_pace}${reset} ${dim}⟳${reset} ${white}${seven_day_reset}${reset}"
+    limits_line+="${sep2}${white}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${seven_day_pace}${reset} ${dim}⟳${reset} ${white}${seven_day_reset}${reset}"
     rate_lines+="\n${limits_line}"
 
     extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')
@@ -397,6 +406,11 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
         rate_lines+="\n${extra_reset_line}"
     fi
 fi
+
+# ── Assemble context line, aligned with the limits line ─
+target_w=$(( ctx_w > cur_w ? ctx_w : cur_w ))
+rate_lines="${context_left}$(pad_to "$target_w" "$ctx_w")${cache_text:+${sep2}${cache_text}}${rate_lines}"
+rate_lines="${rate_lines/@@PAD@@/$(pad_to "$target_w" "$cur_w")}"
 
 # ── Write state file (interface for the keep-alive hook) ─
 write_state() {
