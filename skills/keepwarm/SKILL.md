@@ -12,7 +12,7 @@ User argument: `$ARGUMENTS`
 
 ## Ping turn
 
-If the prompt contains `[keepwarm] cache keep-alive ping`, this is a ping, not the user. Obey the context line `keepwarm verdict` exactly:
+If the prompt starts with `[keepwarm] cache keep-alive ping`, this is a ping, not the user. Obey the context line `keepwarm verdict` exactly:
 
 - `keepwarm verdict: ok` -> reply `ok`. No tools.
 - `keepwarm verdict: stop (...)` -> CronList, CronDelete every job whose prompt contains `[keepwarm]`, reply `keepwarm stopped`. No other tools.

@@ -185,8 +185,10 @@ Stop (`/keepwarm off`): `CronDelete` the `[keepwarm]` job(s), confirm.
 Stdin: `session_id`, `prompt`, … (no context size — that comes from the statusline state file).
 Cron-fired prompts DO go through `UserPromptSubmit`.
 
-1. **Ping** — `prompt` *contains* `[keepwarm]` (substring, not prefix — the fired prompt may
-   arrive wrapped). Not user input; never update `.last-input`.
+1. **Ping** — `prompt` *starts with* `[keepwarm] cache keep-alive ping` after leading whitespace
+   (a substring match would misclassify pasted output quoting the job). Verified against
+   Claude Code 2.1.319: a cron-fired prompt arrives verbatim, unwrapped; re-check after
+   Claude Code upgrades. Not user input; never update `.last-input`.
    - If now − `.last-input` ≥ 4 h, or state `ttl != "1h"`, or the usage guard trips →
      remove `.keepwarm` marker, inject `additionalContext`: verdict `stop` (CronDelete the
      job, reply `keepwarm stopped`).
@@ -206,7 +208,7 @@ Cron-fired prompts DO go through `UserPromptSubmit`.
    prompt; on any error exit 0.
 
 **Build gate:** before shipping, verify empirically (local Claude Code 2.1.319) what
-`prompt` the hook receives for a cron fire, so the `[keepwarm]` match is proven. If it fails,
+`prompt` the hook receives for a cron fire, so the prefix match is proven. If it fails,
 pings would refresh `.last-input` and the job would run until cron's 7-day expiry — a direct
 violation of the 4 h anti-goal.
 

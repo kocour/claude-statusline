@@ -18,7 +18,7 @@ parsed=$(printf '%s' "$input" | jq -r '
     (.session_id // "") as $s
     | (.prompt // "" | if type == "string" then . else "" end) as $p
     | [ (if ($s | type) == "string" and ($s | test("\\A[A-Za-z0-9][A-Za-z0-9._-]*\\z")) then $s else "" end),
-        (if ($p | contains("[keepwarm] cache keep-alive ping")) then "ping"
+        (if ($p | test("^\\s*\\[keepwarm\\] cache keep-alive ping")) then "ping"
          elif ($p | test("^\\s*/keepwarm\\s+off(\\s|$)")) then "off"
          elif ($p | test("^\\s*/keepwarm(\\s|$)")) then "start"
          else "other" end) ] | .[]' 2>/dev/null) || exit 0

@@ -129,11 +129,27 @@ test_ping_without_last_input_stops() {
     assert_contains "$(run_hook "[keepwarm] cache keep-alive ping")" "stop (no record of user input)" "stop no record"
 }
 
-test_ping_marker_inside_wrapped_prompt() {
+test_pasted_output_with_marker_is_user_input() {
+    fresh; state_file 1h $((NOW + 600)) 1000
+    printf '%s' $((NOW - 3600)) > "$TMP/state/$SID.last-input"
+    local out; out=$(run_hook $'v druhé session funguje:\n⏺ CronCreate(13,43 * * * *: [keepwarm] cache keep-alive ping. If no …)')
+    assert_eq "" "$out" "no block or verdict"
+    assert_eq "$NOW" "$(cat "$TMP/state/$SID.last-input")" "last-input updated"
+}
+
+test_ping_exact_literal() {
     fresh; state_file 1h $((NOW + 600)) 100000
     printf '%s' $((NOW - 3600)) > "$TMP/state/$SID.last-input"
-    local out; out=$(run_hook $'<scheduled-task>\n[keepwarm] cache keep-alive ping\n</scheduled-task>')
-    assert_contains "$out" "keepwarm verdict: ok" "wrapped ping recognised"
+    local out; out=$(run_hook '[keepwarm] cache keep-alive ping. If no "keepwarm verdict" context accompanies this message, use CronList and CronDelete every job whose prompt contains [keepwarm], then reply "keepwarm stopped".')
+    assert_contains "$out" "keepwarm verdict: ok" "exact literal is a ping"
+    assert_eq "$((NOW - 3600))" "$(cat "$TMP/state/$SID.last-input")" "last-input unchanged"
+}
+
+test_ping_leading_whitespace() {
+    fresh; state_file 1h $((NOW + 600)) 100000
+    printf '%s' $((NOW - 3600)) > "$TMP/state/$SID.last-input"
+    local out; out=$(run_hook $'  \n[keepwarm] cache keep-alive ping')
+    assert_contains "$out" "keepwarm verdict: ok" "leading whitespace ping"
     assert_eq "$((NOW - 3600))" "$(cat "$TMP/state/$SID.last-input")" "last-input unchanged"
 }
 
@@ -224,7 +240,7 @@ test_skill_file_contract() {
     local body; body=$(cat "$f")
     assert_contains "$body" "13,43 * * * *" "cron expression"
     assert_contains "$body" "[keepwarm] cache keep-alive ping" "ping prompt"
-    assert_contains "$body" "If the prompt contains \`[keepwarm] cache keep-alive ping\`, this is a ping" "ping definition uses full substring"
+    assert_contains "$body" "If the prompt starts with \`[keepwarm] cache keep-alive ping\`, this is a ping" "ping definition uses prefix"
     assert_contains "$body" 'prompt: "[keepwarm] cache keep-alive ping. If no \"keepwarm verdict\" context accompanies this message, use CronList and CronDelete every job whose prompt contains [keepwarm], then reply \"keepwarm stopped\"."' "ping prompt literal with fail-closed fallback"
     assert_contains "$body" "No verdict in context (hook missing or failed) -> CronList, CronDelete" "no verdict stops"
     assert_contains "$body" "CronDelete" "CronDelete"
