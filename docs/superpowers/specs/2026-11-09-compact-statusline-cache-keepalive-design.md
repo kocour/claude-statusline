@@ -74,7 +74,7 @@ The `extra` usage line (when enabled) stays as today, on its own line(s), with t
 ### Bars
 
 - Width 10, filled `█`, empty `▒` (empty part dim).
-- Filled part colored by the existing `color_for_pct` thresholds (green <50, orange <70,
+- Filled part colored by the existing `color_for_pct` thresholds (mint <50, orange <70,
   yellow <90, red ≥90).
 
 ### Cache segment (in the `context` line)

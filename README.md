@@ -52,7 +52,7 @@ brew install jq
 
 ## What the statusline shows
 
-- **Bars** are 10 blocks wide, colored green, orange, yellow or red as usage grows.
+- **Bars** are 10 blocks wide, colored mint, orange, yellow or red as usage grows.
 - **`context`** shows context window usage and token counts.
 - **`current` / `weekly`** show the 5 hour and 7 day plan limits and their reset times. An `extra` usage line appears when extra usage is enabled.
 - **`cache`** is the time left on the prompt cache:

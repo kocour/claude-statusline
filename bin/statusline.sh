@@ -18,6 +18,7 @@ fi
 blue='\033[38;2;0;153;255m'
 orange='\033[38;2;255;176;85m'
 green='\033[38;2;0;175;80m'
+mint='\033[38;2;150;210;160m'
 cyan='\033[38;2;86;182;194m'
 red='\033[38;2;255;85;85m'
 yellow='\033[38;2;230;200;0m'
@@ -46,7 +47,7 @@ color_for_pct() {
     if [ "$pct" -ge 90 ]; then printf "$red"
     elif [ "$pct" -ge 70 ]; then printf "$yellow"
     elif [ "$pct" -ge 50 ]; then printf "$orange"
-    else printf "$green"
+    else printf "$mint"
     fi
 }
 
