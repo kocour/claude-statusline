@@ -22,6 +22,7 @@ cyan='\033[38;2;86;182;194m'
 red='\033[38;2;255;85;85m'
 yellow='\033[38;2;230;200;0m'
 white='\033[38;2;220;220;220m'
+steel='\033[38;2;143;184;222m'
 magenta='\033[38;2;180;140;255m'
 dim='\033[2m'
 reset='\033[0m'
@@ -333,7 +334,7 @@ render_cache_segment() {
         local label="${mins}m"
         [ "$remaining" -lt 60 ] && label="<1m"
         if [ "$remaining" -gt 1500 ]; then
-            text="${white}cache ${label}${reset}"
+            text="${steel}cache ${label}${reset}"
         elif [ "$remaining" -gt 300 ]; then
             text="${yellow}⧗ cache ${label}${reset}"
         else
@@ -352,7 +353,7 @@ bar_width=10
 context_bar=$(build_bar "$pct_used" "$bar_width")
 context_pct_color=$(color_for_pct "$pct_used")
 context_pct_fmt=$(printf "%3d" "$pct_used")
-context_left="${white}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${used_tokens}/${total_tokens}${reset}"
+context_left="${steel}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${steel}${used_tokens}/${total_tokens}${reset}"
 cache_text=$(render_cache_segment)
 # Visible width of the left parts, locale-independent: ASCII pieces counted
 # with ${#}, fixed-width non-ASCII glyphs (10-glyph bar, ⟳, ↑) added by hand.
