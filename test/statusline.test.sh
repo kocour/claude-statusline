@@ -52,14 +52,14 @@ make_cache_stdin() {
 }
 context_line() { printf '%s\n' "$1" | grep '^context'; }
 
-test_cache_steel_when_far() {
+test_cache_white_when_far() {
     make_cache_stdin true true $((CNOW + 3120))
     local out raw
     out=$(STATUSLINE_NOW=$CNOW run_statusline "$TMP/cache.json")
     raw=$(STATUSLINE_NOW=$CNOW run_statusline_raw "$TMP/cache.json" | grep 'context')
-    assert_eq "1" "$(context_line "$out" | grep -c '   │   cache 52m$')" "far cache is plain steel countdown"
+    assert_eq "1" "$(context_line "$out" | grep -c '   │   cache 52m$')" "far cache is plain white countdown"
     local before="${raw%%cache*}"
-    assert_contains "$raw" $'\033[38;2;143;184;222mcache 52m' "steel escape directly precedes cache"
+    assert_contains "$raw" $'\033[38;2;220;220;220mcache 52m' "white escape directly precedes cache"
     assert_not_contains "$before" $'\033[38;2;230;200;0m' "no yellow before cache"
     assert_not_contains "$before" $'\033[38;2;255;85;85m' "no red before cache"
 }
@@ -119,15 +119,24 @@ test_cache_null_expires() {
     assert_contains "$(context_line "$out")" "cache cold" "null expires_at is cold"
 }
 
-test_context_label_steel() {
+test_context_label_white() {
     make_cache_stdin true true $((CNOW + 3120))
     local raw
     raw=$(STATUSLINE_NOW=$CNOW run_statusline_raw "$TMP/cache.json" | grep 'context')
-    assert_contains "$raw" $'\033[38;2;143;184;222mcontext' "context label is steel"
+    assert_contains "$raw" $'\033[38;2;220;220;220mcontext' "context label is white"
 }
 
-test_cache_steel_when_far
-test_context_label_steel
+test_limits_labels_silver() {
+    make_cache_stdin true true $((CNOW + 3120))
+    local raw
+    raw=$(STATUSLINE_NOW=$CNOW run_statusline_raw "$TMP/cache.json")
+    assert_contains "$raw" $'\033[38;2;160;180;200mcurrent' "current label is silver"
+    assert_contains "$raw" $'\033[38;2;160;180;200mweekly' "weekly label is silver"
+}
+
+test_cache_white_when_far
+test_limits_labels_silver
+test_context_label_white
 test_cache_yellow
 test_cache_red
 test_cache_under_minute

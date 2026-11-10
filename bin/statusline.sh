@@ -22,7 +22,7 @@ cyan='\033[38;2;86;182;194m'
 red='\033[38;2;255;85;85m'
 yellow='\033[38;2;230;200;0m'
 white='\033[38;2;220;220;220m'
-steel='\033[38;2;143;184;222m'
+silver='\033[38;2;160;180;200m'
 magenta='\033[38;2;180;140;255m'
 dim='\033[2m'
 reset='\033[0m'
@@ -334,7 +334,7 @@ render_cache_segment() {
         local label="${mins}m"
         [ "$remaining" -lt 60 ] && label="<1m"
         if [ "$remaining" -gt 1500 ]; then
-            text="${steel}cache ${label}${reset}"
+            text="${white}cache ${label}${reset}"
         elif [ "$remaining" -gt 300 ]; then
             text="${yellow}⧗ cache ${label}${reset}"
         else
@@ -353,7 +353,7 @@ bar_width=10
 context_bar=$(build_bar "$pct_used" "$bar_width")
 context_pct_color=$(color_for_pct "$pct_used")
 context_pct_fmt=$(printf "%3d" "$pct_used")
-context_left="${steel}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${steel}${used_tokens}/${total_tokens}${reset}"
+context_left="${white}context${reset} ${context_bar} ${context_pct_color}${context_pct_fmt}%${reset} ${dim}⟳${reset} ${white}${used_tokens}/${total_tokens}${reset}"
 cache_text=$(render_cache_segment)
 # Visible width of the left parts, locale-independent: ASCII pieces counted
 # with ${#}, fixed-width non-ASCII glyphs (10-glyph bar, ⟳, ↑) added by hand.
@@ -375,7 +375,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
 
     cur_w=$(( 25 + ${#five_hour_reset} ))
     [ -n "$five_hour_pace" ] && cur_w=$(( cur_w + 1 ))
-    limits_line="${white}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${five_hour_pace}${reset} ${dim}⟳${reset} ${white}${five_hour_reset}${reset}@@PAD@@"
+    limits_line="${silver}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${five_hour_pace}${reset} ${dim}⟳${reset} ${silver}${five_hour_reset}${reset}@@PAD@@"
 
     seven_day_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
     seven_day_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
@@ -385,7 +385,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     seven_day_pct_fmt=$(printf "%3d" "$seven_day_pct")
     seven_day_pace=$(pace_arrow "$seven_day_pct" "$seven_day_reset_iso" 604800)
 
-    limits_line+="${sep2}${white}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${seven_day_pace}${reset} ${dim}⟳${reset} ${white}${seven_day_reset}${reset}"
+    limits_line+="${sep2}${silver}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${seven_day_pace}${reset} ${dim}⟳${reset} ${silver}${seven_day_reset}${reset}"
     rate_lines+="\n${limits_line}"
 
     extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')
@@ -401,8 +401,8 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
             extra_reset=$(date -d "$(date -d "@$NOW" +%Y-%m-01) +1 month" +"%b %-d" 2>/dev/null | tr '[:upper:]' '[:lower:]')
         fi
 
-        extra_col="${white}extra${reset}   ${extra_bar} ${extra_pct_color}\$${extra_used}${dim}/${reset}${white}\$${extra_limit}${reset}"
-        extra_reset_line="${dim}resets ${reset}${white}${extra_reset}${reset}"
+        extra_col="${silver}extra${reset}   ${extra_bar} ${extra_pct_color}\$${extra_used}${dim}/${reset}${silver}\$${extra_limit}${reset}"
+        extra_reset_line="${dim}resets ${reset}${silver}${extra_reset}${reset}"
         rate_lines+="\n${extra_col}"
         rate_lines+="\n${extra_reset_line}"
     fi
