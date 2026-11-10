@@ -26,9 +26,23 @@ current ███████▒▒▒  73%↑ ⟳ 15:12      │   weekly █�
 
 ## Install
 
+The package is not published to npm yet, so install it from the repository:
+
 ```bash
-npx @kocour/claude-statusline
+git clone https://github.com/kocour/claude-statusline ~/.claude-statusline
+node ~/.claude-statusline/bin/install.js
 ```
+
+Restart Claude Code afterwards.
+
+To update, pull and re-run the installer:
+
+```bash
+git -C ~/.claude-statusline pull
+node ~/.claude-statusline/bin/install.js
+```
+
+Once it is on npm, `npx @kocour/claude-statusline` will do the same.
 
 The installer:
 
@@ -99,7 +113,7 @@ Note: while keep-alive runs, Claude Code's built-in idle compaction (1 hour cach
 ## Uninstall
 
 ```bash
-npx @kocour/claude-statusline --uninstall
+node ~/.claude-statusline/bin/install.js --uninstall
 ```
 
 This restores your previous statusline from the backup if there is one (the `statusLine` setting stays, only the `refreshInterval` it added is removed), otherwise removes `statusline.sh` and the `statusLine` setting. It also removes the keep-alive hook entry (only ours; other hooks stay), `keepwarm-hook.sh`, the `keepwarm` skill and the `~/.claude/statusline-state/` directory. Restart Claude Code afterwards.
