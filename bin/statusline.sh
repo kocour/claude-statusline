@@ -359,7 +359,7 @@ cache_text=$(render_cache_segment)
 # "label " (7+1) + bar (10) + " " + "NNN%" (4) + " ⟳ " (3) = 25
 ctx_w=$(( 25 + ${#used_tokens} + 1 + ${#total_tokens} ))
 cur_w=0
-sep2="  ${dim}│${reset} "
+sep2="   ${dim}│${reset}  "
 pad_to() { local n=$(( $1 - $2 )); [ "$n" -gt 0 ] && printf "%${n}s" ""; return 0; }
 
 if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
