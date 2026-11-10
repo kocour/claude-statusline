@@ -11,8 +11,8 @@ Calm (last response 8 minutes ago):
 ```
 Opus 5.5 │ claude-statusline (main) │ ⏱ 1h12m │ ● high
 
-context ████▒▒▒▒▒▒  42% ⟳ 84k/200k │ cache 52m
-current ███▒▒▒▒▒▒▒  31% ⟳ 15:12 │ weekly ██▒▒▒▒▒▒▒▒  22% ⟳ Nov 12, 09:00
+context ████▒▒▒▒▒▒  42% ⟳ 84k/200k   │   cache 52m
+current ███▒▒▒▒▒▒▒  31% ⟳ 15:12      │   weekly ██▒▒▒▒▒▒▒▒  22% ⟳ Nov 12, 09:00
 ```
 
 Hot (cache about to expire, 5 h limit running ahead of the clock):
@@ -20,8 +20,8 @@ Hot (cache about to expire, 5 h limit running ahead of the clock):
 ```
 Opus 5.5 │ claude-statusline (main*) │ ⏱ 2h40m │ ● high
 
-context ████████▒▒  78% ⟳ 156k/200k │ ⧗ cache 12m ♻
-current ███████▒▒▒  73%↑ ⟳ 15:12 │ weekly ████▒▒▒▒▒▒  41% ⟳ Nov 12, 09:00
+context ███████▒▒▒  78% ⟳ 156k/200k   │   ⧗ cache 12m ♻
+current ███████▒▒▒  73%↑ ⟳ 15:12      │   weekly ████▒▒▒▒▒▒  41% ⟳ Nov 12, 09:00
 ```
 
 ## Install

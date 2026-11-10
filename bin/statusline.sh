@@ -358,8 +358,8 @@ context_left="${white}context${reset} ${context_bar} ${context_pct_color}${conte
 cache_text=$(render_cache_segment)
 # Visible width of the left parts, locale-independent: ASCII pieces counted
 # with ${#}, fixed-width non-ASCII glyphs (10-glyph bar, ⟳, ↑) added by hand.
-# "label " (7+1) + bar (10) + " " + "NNN%" (4) + " ⟳ " (3) = 25
-ctx_w=$(( 25 + ${#used_tokens} + 1 + ${#total_tokens} ))
+# "label " (7+1) + bar (10) + " " + "NNN%" (4) + " ⟳ " (3) = 26
+ctx_w=$(( 26 + ${#used_tokens} + 1 + ${#total_tokens} ))
 cur_w=0
 sep2="   ${dim}│${reset}   "
 pad_to() { local n=$(( $1 - $2 )); [ "$n" -gt 0 ] && printf "%${n}s" ""; return 0; }
@@ -374,7 +374,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     five_hour_pct_fmt=$(printf "%3d" "$five_hour_pct")
     five_hour_pace=$(pace_arrow "$five_hour_pct" "$five_hour_reset_iso" 18000)
 
-    cur_w=$(( 25 + ${#five_hour_reset} ))
+    cur_w=$(( 26 + ${#five_hour_reset} ))
     [ -n "$five_hour_pace" ] && cur_w=$(( cur_w + 1 ))
     limits_line="${silver}current${reset} ${five_hour_bar} ${five_hour_pct_color}${five_hour_pct_fmt}%${five_hour_pace}${reset} ${dim}⟳${reset} ${silver}${five_hour_reset}${reset}@@PAD@@"
 

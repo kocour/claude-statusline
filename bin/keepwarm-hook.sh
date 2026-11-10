@@ -13,20 +13,24 @@ STATE_DIR="${STATUSLINE_STATE_DIR:-$HOME/.claude/statusline-state}"
 input=$(cat) || exit 0
 [ -n "$input" ] || exit 0
 
-# One jq parse: session id + prompt classification (ping | off | start | other).
+# One jq parse: session id + prompt classification (ping | suspect | off | start | other).
+# "suspect" = full ping sentence embedded in a prompt that does not start with the marker
+# (e.g. a wrapped cron fire): treated as neither ping nor user input.
 parsed=$(printf '%s' "$input" | jq -r '
     (.session_id // "") as $s
     | (.prompt // "" | if type == "string" then . else "" end) as $p
     | [ (if ($s | type) == "string" and ($s | test("\\A[A-Za-z0-9][A-Za-z0-9._-]*\\z")) then $s else "" end),
-        (if ($p | test("^\\s*\\[keepwarm\\] cache keep-alive ping")) then "ping"
-         elif ($p | test("^\\s*/keepwarm\\s+off(\\s|$)")) then "off"
-         elif ($p | test("^\\s*/keepwarm(\\s|$)")) then "start"
+        (if ($p | test("\\A\\s*\\[keepwarm\\] cache keep-alive ping")) then "ping"
+         elif ($p | contains("[keepwarm] cache keep-alive ping. If no \"keepwarm verdict\" context accompanies this message")) then "suspect"
+         elif ($p | test("\\A\\s*/keepwarm\\s+off(\\s|$)")) then "off"
+         elif ($p | test("\\A\\s*/keepwarm(\\s|$)")) then "start"
          else "other" end) ] | .[]' 2>/dev/null) || exit 0
 sid=$(printf '%s\n' "$parsed" | sed -n 1p)
 kind=$(printf '%s\n' "$parsed" | sed -n 2p)
 
 [[ "$sid" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || exit 0
 [ -n "$kind" ] || exit 0
+[ "$kind" = "suspect" ] && exit 0
 
 STATE="$STATE_DIR/$sid.json"
 LAST="$STATE_DIR/$sid.last-input"

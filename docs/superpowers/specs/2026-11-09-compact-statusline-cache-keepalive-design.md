@@ -56,8 +56,8 @@ Calm state (last response 8 min ago, 84k context):
 ```
 Opus 5.5 │ claude-statusline (main) │ ⏱ 1h12m │ ● high
 
-context ████▒▒▒▒▒▒  42% ⟳ 84k/200k │ cache 52m
-current ███▒▒▒▒▒▒▒  31% ⟳ 15:12 │ weekly ██▒▒▒▒▒▒▒▒  22% ⟳ Nov 12, 09:00
+context ████▒▒▒▒▒▒  42% ⟳ 84k/200k   │   cache 52m
+current ███▒▒▒▒▒▒▒  31% ⟳ 15:12      │   weekly ██▒▒▒▒▒▒▒▒  22% ⟳ Nov 12, 09:00
 ```
 
 Hot state (cache about to expire, 5 h limit running ahead):
@@ -65,9 +65,11 @@ Hot state (cache about to expire, 5 h limit running ahead):
 ```
 Opus 5.5 │ claude-statusline (main*) │ ⏱ 2h40m │ ● high
 
-context ████████▒▒  78% ⟳ 156k/200k │ ⧗ cache 12m ♻
-current ███████▒▒▒  73%↑ ⟳ 15:12 │ weekly ████▒▒▒▒▒▒  41% ⟳ Nov 12, 09:00
+context ███████▒▒▒  78% ⟳ 156k/200k   │   ⧗ cache 12m ♻
+current ███████▒▒▒  73%↑ ⟳ 15:12      │   weekly ████▒▒▒▒▒▒  41% ⟳ Nov 12, 09:00
 ```
+
+- Second segments (`cache`, `weekly`) are aligned to a common column, separated by `   │   `. The `context` line is white, the `limits` line silver blue (160;180;200); bars and percentages below 50 % are soft mint (150;210;160).
 
 The `extra` usage line (when enabled) stays as today, on its own line(s), with the new bar.
 
@@ -189,6 +191,11 @@ Cron-fired prompts DO go through `UserPromptSubmit`.
    (a substring match would misclassify pasted output quoting the job). Verified against
    Claude Code 2.1.319: a cron-fired prompt arrives verbatim, unwrapped; re-check after
    Claude Code upgrades. Not user input; never update `.last-input`.
+   - **Suspected ping**: a prompt that does not start with the marker but contains the full
+     sentence `[keepwarm] cache keep-alive ping. If no "keepwarm verdict" context accompanies
+     this message` (e.g. a cron fire wrapped by a future Claude Code) is treated as neither ping
+     nor user input: no output, no `.last-input` update, no nudge, never blocked. This protects
+     the 4 h cut-off. Pastes showing a truncated `If no …` remain normal user input.
    - If now − `.last-input` ≥ 4 h, or state `ttl != "1h"`, or the usage guard trips →
      remove `.keepwarm` marker, inject `additionalContext`: verdict `stop` (CronDelete the
      job, reply `keepwarm stopped`).

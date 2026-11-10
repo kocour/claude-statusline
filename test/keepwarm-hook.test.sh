@@ -145,6 +145,24 @@ test_ping_exact_literal() {
     assert_eq "$((NOW - 3600))" "$(cat "$TMP/state/$SID.last-input")" "last-input unchanged"
 }
 
+test_wrapped_fire_is_suspected_ping() {
+    fresh; state_file 1h $((NOW + 600)) 150000
+    printf '%s' $((NOW - 18000)) > "$TMP/state/$SID.last-input"
+    local lit='[keepwarm] cache keep-alive ping. If no "keepwarm verdict" context accompanies this message, use CronList and CronDelete every job whose prompt contains [keepwarm], then reply "keepwarm stopped".'
+    local out; out=$(run_hook $'<scheduled-task>\n'"$lit"$'\n</scheduled-task>')
+    assert_eq "" "$out" "suspected ping emits nothing"
+    assert_eq "$((NOW - 18000))" "$(cat "$TMP/state/$SID.last-input")" "last-input unchanged"
+    [ ! -e "$TMP/state/$SID.nudged" ] && _pass || _fail "no .nudged created"
+}
+
+test_marker_on_later_line_is_user_input() {
+    fresh; state_file 1h $((NOW + 600)) 1000
+    printf '%s' $((NOW - 3600)) > "$TMP/state/$SID.last-input"
+    local out; out=$(run_hook $'x\n[keepwarm] cache keep-alive ping')
+    assert_eq "" "$out" "no verdict"
+    assert_eq "$NOW" "$(cat "$TMP/state/$SID.last-input")" "last-input updated"
+}
+
 test_ping_leading_whitespace() {
     fresh; state_file 1h $((NOW + 600)) 100000
     printf '%s' $((NOW - 3600)) > "$TMP/state/$SID.last-input"

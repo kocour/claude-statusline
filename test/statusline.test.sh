@@ -323,7 +323,12 @@ test_pace_future_reset_no_arrow() {
 }
 
 # column (in characters) of the first │ on the line starting with $2
-sep_col() { printf '%s\n' "$1" | grep "^$2" | LC_ALL=en_US.UTF-8 python3 -c 'import sys; print(sys.stdin.read().index("│"))'; }
+sep_col() {
+    local c
+    c=$(printf '%s\n' "$1" | grep "^$2" | LC_ALL=C awk '{ i = index($0, "\342\224\202"); if (i) { s = substr($0, 1, i - 1); gsub(/[\200-\277]/, "", s); print length(s) } }')
+    [[ "$c" =~ ^[0-9]+$ ]] || { _fail "sep_col: no separator on '$2' line"; c="none-$2"; }
+    printf '%s' "$c"
+}
 
 test_second_segments_aligned() {
     make_cache_stdin true true $((CNOW + 3120))
