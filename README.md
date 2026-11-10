@@ -88,7 +88,7 @@ It also will not start under the last two conditions.
 
 **How it works**
 
-A `UserPromptSubmit` hook makes every decision and writes small state files in `~/.claude/statusline-state/`. The skill only creates or deletes a session cron job (`CronCreate`, `CronList`, `CronDelete`) that sends `[keepwarm] cache keep-alive ping` every 30 minutes. The hook treats a prompt as a ping only if it starts with that text (verified against Claude Code 2.1.319, where a cron-fired prompt arrives verbatim; re-check after Claude Code upgrades), so pasted output that merely mentions it is normal input. A ping is answered with `ok` and no tools. While you are actively using the session (the cache has more than 40 minutes left), the hook blocks the ping before it reaches the API, so it costs nothing.
+A `UserPromptSubmit` hook makes every decision and writes small state files in `~/.claude/statusline-state/`. The skill only creates or deletes a session cron job (`CronCreate`, `CronList`, `CronDelete`) that sends `[keepwarm] cache keep-alive ping` every 30 minutes. The hook treats a prompt as a ping only if it starts with that text (verified against Claude Code 2.1.319, where a cron-fired prompt arrives verbatim; re-check after Claude Code upgrades), so pasted output that merely mentions it is normal input. A ping is answered with `ok` and no tools. While you are actively using the session (the cache has more than 40 minutes left), the hook blocks the ping before it reaches the API, so it costs nothing. The skipped ping leaves a notice in the transcript, `keepwarm ✓ cache is still warm, no ping needed (nothing is wrong)`; it appears roughly every 30 minutes while you work and is expected.
 
 **Costs**
 

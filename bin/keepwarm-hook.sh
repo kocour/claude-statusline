@@ -74,7 +74,7 @@ if [ "$kind" = "ping" ]; then
         stop_reason="plan usage above 90%"
     elif is_int "$expires" && [ $((expires - NOW)) -gt 2400 ]; then
         touch "$KEEP"
-        jq -nc '{decision:"block",reason:"keepwarm: cache still warm, ping skipped",hookSpecificOutput:{hookEventName:"UserPromptSubmit",suppressOriginalPrompt:true}}'
+        jq -nc '{decision:"block",reason:"keepwarm ✓ cache is still warm, no ping needed (nothing is wrong)",hookSpecificOutput:{hookEventName:"UserPromptSubmit",suppressOriginalPrompt:true}}'
         exit 0
     else
         touch "$KEEP"

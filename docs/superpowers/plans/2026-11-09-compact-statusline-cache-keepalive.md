@@ -155,7 +155,7 @@ Algorithm (from spec): `window_start = resets_at − window`; `elapsed_pct = (no
 - Produces (stdin JSON from Claude Code: `session_id`, `prompt`): files in `$STATE_DIR`: `<sid>.last-input` (content: epoch), `<sid>.keepwarm` (marker, mtime = liveness), `<sid>.nudged` (marker). Stdout: nothing, or one JSON object. Always exit 0.
 - Output shapes:
   - context: `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"<text>"}}`
-  - block: `{"decision":"block","reason":"keepwarm: cache still warm, ping skipped"}`
+  - block: `{"decision":"block","reason":"keepwarm ✓ cache is still warm, no ping needed (nothing is wrong)"}`
 - Exact texts (tests match on the leading token):
   - ping ok: `keepwarm verdict: ok. Reply with exactly "ok". Do not use any tools.`
   - ping stop: `keepwarm verdict: stop (<reason>). Use CronList to find the job whose prompt contains [keepwarm], CronDelete it, then reply "keepwarm stopped". Use no other tools.` — reasons: `no user input for 4h`, `cache TTL is not 1h`, `plan usage above 90%`, `no record of user input`.

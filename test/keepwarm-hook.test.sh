@@ -92,7 +92,7 @@ test_ping_blocked_when_warm() {
     printf '%s' $((NOW - 600)) > "$TMP/state/$SID.last-input"
     local out; out=$(run_hook "[keepwarm] cache keep-alive ping")
     assert_contains "$out" '"decision":"block"' "blocked"
-    assert_contains "$out" "keepwarm: cache still warm, ping skipped" "block reason"
+    assert_contains "$out" "keepwarm ✓ cache is still warm, no ping needed (nothing is wrong)" "block reason"
     assert_eq "true" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.suppressOriginalPrompt')" "suppressOriginalPrompt"
     assert_eq "UserPromptSubmit" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.hookEventName')" "hookEventName"
     local real; real=$(date +%s)
