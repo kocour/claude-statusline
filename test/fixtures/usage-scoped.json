@@ -1,0 +1,12 @@
+{
+  "five_hour": {"utilization": 31, "resets_at": "2026-01-01T14:30:00Z"},
+  "seven_day": {"utilization": 22, "resets_at": "2026-01-05T00:00:00Z"},
+  "extra_usage": {"is_enabled": false},
+  "limits": [
+    {"kind": "session", "group": "session", "percent": 31, "resets_at": "2026-01-01T14:30:00.123456+00:00", "scope": null, "is_active": false},
+    {"kind": "weekly_all", "group": "weekly", "percent": 22, "resets_at": "2026-01-05T00:00:00.736498+00:00", "scope": null, "is_active": true},
+    {"kind": "weekly_scoped", "group": "weekly", "percent": 6, "resets_at": "2026-01-05T00:00:00.736652+00:00",
+     "scope": {"model": {"id": null, "display_name": "Fable"}, "surface": null}, "is_active": false}
+  ],
+  "weekly_scoped_shares": [{"limit_index": 2, "used_percent_of_weekly": 3, "allowance_percent_of_weekly": 50}]
+}

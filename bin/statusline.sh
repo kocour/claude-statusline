@@ -387,6 +387,34 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     seven_day_pace=$(pace_arrow "$seven_day_pct" "$seven_day_reset_iso" 604800)
 
     limits_line+="${sep2}${silver}weekly${reset} ${seven_day_bar} ${seven_day_pct_color}${seven_day_pct_fmt}%${seven_day_pace}${reset} ${dim}⟳${reset} ${silver}${seven_day_reset}${reset}"
+
+    # Per-model weekly limits (undocumented "limits" array), e.g. "fable".
+    # One TSV row per entry: <label>\t<percent>\t<resets_at>
+    while IFS=$'\t' read -r scoped_label scoped_raw_pct scoped_reset_iso; do
+        scoped_label=$(printf '%s' "$scoped_label" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9 ._-')
+        scoped_label="${scoped_label:0:12}"
+        scoped_label="${scoped_label#"${scoped_label%%[! ]*}"}"
+        scoped_label="${scoped_label%"${scoped_label##*[! ]}"}"
+        [ -n "$scoped_label" ] || continue
+        scoped_pct=$(printf '%s' "$scoped_raw_pct" | awk '{printf "%.0f", $1}')
+        scoped_reset=$(format_reset_time "$scoped_reset_iso" "datetime")
+        scoped_bar=$(build_bar "$scoped_pct" "$bar_width")
+        scoped_pct_color=$(color_for_pct "$scoped_pct")
+        scoped_pct_fmt=$(printf "%3d" "$scoped_pct")
+        scoped_pace=$(pace_arrow "$scoped_pct" "$scoped_reset_iso" 604800)
+
+        limits_line+="${sep2}${silver}${scoped_label}${reset} ${scoped_bar} ${scoped_pct_color}${scoped_pct_fmt}%${scoped_pace}${reset}"
+        [ -n "$scoped_reset" ] && [ "$scoped_reset" != "$seven_day_reset" ] && \
+            limits_line+=" ${dim}⟳${reset} ${silver}${scoped_reset}${reset}"
+    done < <(echo "$usage_data" | jq -r '
+        ((.limits // []) | if type == "array" then . else [] end)[]
+        | select(type == "object" and .kind == "weekly_scoped")
+        | ((.scope | objects | .model | objects | .display_name | strings) // "") as $label
+        | (.percent | numbers | select(. >= 0 and . <= 1000)) as $pct
+        | select($label != "")
+        | [$label, $pct, ((.resets_at | strings) // "")]
+        | map(tostring | gsub("[\t\n\r]"; " ")) | join("\t")' 2>/dev/null)
+
     rate_lines+="\n${limits_line}"
 
     extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')

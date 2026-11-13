@@ -349,6 +349,85 @@ test_second_segments_aligned_c_locale() {
     assert_eq "$(sep_col "$out" context)" "$(sep_col "$out" current)" "separators aligned under LANG=C"
 }
 
+# ── scoped weekly limits ────────────────────────────────
+SCOPED="$ROOT/test/fixtures/usage-scoped.json"
+
+test_scoped_segment_on_limits_line() {
+    local out line
+    out=$(STATUSLINE_USAGE_FILE="$SCOPED" run_statusline "$STDIN")
+    line=$(limits_line "$out")
+    assert_eq 1 "$(printf '%s\n' "$line" | grep -cE 'weekly ██▒▒▒▒▒▒▒▒  22% ⟳ [A-Z][a-z]{2} [0-9]+, [0-9:]{5}   │   fable ▒▒▒▒▒▒▒▒▒▒   6%')" "fable segment follows weekly on the same line"
+    assert_eq 0 "$(printf '%s\n' "$out" | grep -c '^fable')" "no separate fable line"
+}
+
+test_scoped_reset_hidden_when_equal() {
+    local out line
+    out=$(STATUSLINE_USAGE_FILE="$SCOPED" run_statusline "$STDIN")
+    line=$(limits_line "$out")
+    assert_eq 1 "$(printf '%s\n' "$line" | grep -cE 'fable ▒▒▒▒▒▒▒▒▒▒   6%$')" "no reset after fable when equal to weekly (sub-second diff ignored)"
+}
+
+test_scoped_reset_shown_when_different() {
+    local out line
+    jq '.limits[2].resets_at = "2026-01-06T08:30:00.5+00:00"' "$SCOPED" > "$TMP/usage-scoped-diff.json"
+    out=$(TZ=UTC STATUSLINE_USAGE_FILE="$TMP/usage-scoped-diff.json" run_statusline "$STDIN")
+    line=$(limits_line "$out")
+    assert_contains "$line" "fable ▒▒▒▒▒▒▒▒▒▒   6% ⟳ Jan 6, 08:30" "differing reset time shown after fable"
+}
+
+test_scoped_label_silver() {
+    local raw
+    raw=$(STATUSLINE_USAGE_FILE="$SCOPED" run_statusline_raw "$STDIN")
+    assert_contains "$raw" $'\033[38;2;160;180;200mfable' "fable label is silver"
+}
+
+test_scoped_absent_without_limits() {
+    local out
+    out=$(run_statusline "$STDIN")
+    assert_not_contains "$out" "fable" "no scoped segment without limits"
+    assert_eq 1 "$(limits_line "$out" | grep -cE '22% ⟳ [A-Z][a-z]{2} [0-9]+, [0-9:]{5}$')" "weekly segment is last on the line"
+}
+
+test_scoped_label_sanitized() {
+    local out line
+    jq '.limits[2].scope.model.display_name = "Fa/ble*Super-Long Name 4.1"' "$SCOPED" > "$TMP/usage-scoped-label.json"
+    out=$(STATUSLINE_USAGE_FILE="$TMP/usage-scoped-label.json" run_statusline "$STDIN")
+    assert_contains "$(limits_line "$out")" "fablesuper-l ▒" "label lowercased, sanitized and truncated to 12 chars"
+    jq '.limits[2].scope.model.display_name = "***"' "$SCOPED" > "$TMP/usage-scoped-label.json"
+    out=$(STATUSLINE_USAGE_FILE="$TMP/usage-scoped-label.json" run_statusline "$STDIN")
+    assert_eq 1 "$(limits_line "$out" | grep -cE '22% ⟳ [A-Z][a-z]{2} [0-9]+, [0-9:]{5}$')" "empty label after sanitizing skips the entry"
+    jq '.limits[2].scope.model.display_name = "Claude Opus 4.5"' "$SCOPED" > "$TMP/usage-scoped-label.json"
+    out=$(STATUSLINE_USAGE_FILE="$TMP/usage-scoped-label.json" run_statusline "$STDIN")
+    assert_contains "$(limits_line "$out")" "│   claude opus ▒" "trailing space after truncation is trimmed"
+}
+
+test_scoped_malformed_limits() {
+    local variants=(
+        '"x"'
+        'null'
+        '{"a":1}'
+        '[]'
+        '[{"kind":"weekly_scoped","scope":null,"percent":5}]'
+        '[{"kind":"weekly_scoped","percent":"6","scope":{"model":{"display_name":"Fable"}}}]'
+        '[{"kind":"weekly_scoped","percent":6,"scope":{"model":{"display_name":""}}}]'
+        '[{"kind":"weekly_scoped","percent":6,"scope":{"model":{"display_name":7}}}]'
+        '[{"kind":"weekly_scoped","percent":6,"scope":"x"}]'
+        '[null, 5, "s", []]'
+        '[{"kind":"weekly_scoped","percent":1e20,"scope":{"model":{"display_name":"Fable"}}}]'
+        '[{"kind":"weekly_scoped","percent":-1,"scope":{"model":{"display_name":"Fable"}}}]'
+        '[{"kind":"weekly_scoped","percent":6,"scope":{"model":{"display_name":"   "}}}]'
+    )
+    local v out err rc
+    for v in "${variants[@]}"; do
+        jq --argjson l "$v" '.limits = $l' "$ROOT/test/fixtures/usage-basic.json" > "$TMP/usage-bad.json"
+        out=$(STATUSLINE_USAGE_FILE="$TMP/usage-bad.json" run_statusline "$STDIN" 2>"$TMP/err"); rc=$?
+        err=$(cat "$TMP/err")
+        assert_eq 0 "$rc" "exit 0 for limits=$v"
+        assert_eq "" "$err" "empty stderr for limits=$v"
+        assert_eq 1 "$(limits_line "$out" | grep -cE '22% ⟳ [A-Z][a-z]{2} [0-9]+, [0-9:]{5}$')" "no scoped segment for limits=$v"
+    done
+}
+
 test_pace_arrow_five_hour
 test_pace_future_reset_no_arrow
 test_pace_no_arrow_boundary
@@ -363,4 +442,12 @@ test_context_bar_blocks
 test_limits_on_one_line
 test_no_dots
 test_no_usage_data
+
+test_scoped_segment_on_limits_line
+test_scoped_reset_hidden_when_equal
+test_scoped_reset_shown_when_different
+test_scoped_label_silver
+test_scoped_absent_without_limits
+test_scoped_label_sanitized
+test_scoped_malformed_limits
 report
