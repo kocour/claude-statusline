@@ -12,7 +12,7 @@ Calm (last response 8 minutes ago):
 Opus 5.5 │ claude-statusline (main) │ ⏱ 1h12m │ ● high
 
 context ████▒▒▒▒▒▒  42% ⟳ 84k/200k   │   cache 52m
-current ███▒▒▒▒▒▒▒  31% ⟳ 15:12      │   weekly ██▒▒▒▒▒▒▒▒  22% ⟳ Nov 12, 09:00
+current ███▒▒▒▒▒▒▒  31% ⟳ 15:12      │   weekly ██▒▒▒▒▒▒▒▒  22% ⟳ Nov 12, 09:00   │   fable ▒▒▒▒▒▒▒▒▒▒   6%
 ```
 
 Hot (cache about to expire, 5 h limit running ahead of the clock):
@@ -68,7 +68,7 @@ brew install jq
 
 - **Bars** are 10 blocks wide, colored mint, orange, yellow or red as usage grows.
 - **`context`** shows context window usage and token counts.
-- **`current` / `weekly`** show the 5 hour and 7 day plan limits and their reset times. An `extra` usage line appears when extra usage is enabled.
+- **`current` / `weekly`** show the 5 hour and 7 day plan limits and their reset times. Per-model weekly limits (e.g. `fable`) follow `weekly` when your plan has them; their reset time is shown only when it differs from the weekly one. An `extra` usage line appears when extra usage is enabled.
 - **`cache`** is the time left on the prompt cache:
   - more than 25 min: white `cache 52m`
   - 25 min or less: yellow `⧗ cache 12m`
